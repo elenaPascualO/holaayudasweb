@@ -1,0 +1,77 @@
+/**
+ * API client for the Hola Ayudas backend proxy.
+ * All requests go through /api/* which Vite proxies to the backend in dev.
+ */
+
+const BASE = '/api'
+
+/**
+ * Generic fetch wrapper with error handling.
+ * @param {string} url - Full URL to fetch
+ * @returns {Promise<any>} Parsed JSON response
+ */
+async function fetchJson(url) {
+  const response = await fetch(url)
+  if (!response.ok) {
+    const text = await response.text().catch(() => 'Unknown error')
+    throw new Error(`API error ${response.status}: ${text}`)
+  }
+  return response.json()
+}
+
+/**
+ * Build a query string from an object, omitting null/undefined/empty values.
+ * @param {Object} params
+ * @returns {string}
+ */
+function buildQuery(params) {
+  const entries = Object.entries(params).filter(
+    ([, v]) => v != null && v !== '' && v !== undefined
+  )
+  if (entries.length === 0) return ''
+  return '?' + new URLSearchParams(entries).toString()
+}
+
+/**
+ * Search grants with filters.
+ * @param {Object} params - Search parameters
+ * @param {string} [params.q] - Search text
+ * @param {number} [params.page] - Page number (0-indexed)
+ * @param {number} [params.pageSize] - Results per page
+ * @param {string} [params.fechaDesde] - Start date (YYYY-MM-DD)
+ * @param {string} [params.fechaHasta] - End date (YYYY-MM-DD)
+ * @param {string} [params.tipoAdministracion] - C, A, L, or O
+ * @param {string} [params.regiones] - Region IDs (comma-separated)
+ * @returns {Promise<Object>} Paginated results
+ */
+export async function searchGrants(params = {}) {
+  return fetchJson(`${BASE}/convocatorias${buildQuery(params)}`)
+}
+
+/**
+ * Get latest published grants.
+ * @param {number} [page=0] - Page number
+ * @param {number} [pageSize=10] - Results per page
+ * @returns {Promise<Object>} Paginated results
+ */
+export async function getLatestGrants(page = 0, pageSize = 10) {
+  return fetchJson(`${BASE}/convocatorias/ultimas?page=${page}&pageSize=${pageSize}`)
+}
+
+/**
+ * Get full detail of a specific grant.
+ * @param {string} bdnsCode - The BDNS code
+ * @returns {Promise<Object>} Grant detail
+ */
+export async function getGrantDetail(bdnsCode) {
+  return fetchJson(`${BASE}/convocatorias/${encodeURIComponent(bdnsCode)}`)
+}
+
+/**
+ * Get a catalog by name.
+ * @param {string} name - regiones|finalidades|instrumentos|actividades|beneficiarios
+ * @returns {Promise<Array>} Catalog data
+ */
+export async function getCatalog(name) {
+  return fetchJson(`${BASE}/catalogo/${encodeURIComponent(name)}`)
+}
