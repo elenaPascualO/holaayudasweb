@@ -15,9 +15,12 @@ const ADMIN_TYPES = [
 /**
  * Create the filter panel.
  * @param {Object} currentFilters - Currently active filter values
+ * @param {Object} regionData - Region lists for dropdowns
+ * @param {Array<{id: number, name: string}>} [regionData.communities]
+ * @param {Array<{id: number, name: string}>} [regionData.provinces]
  * @returns {string} HTML
  */
-export function createFilterPanel(currentFilters = {}) {
+export function createFilterPanel(currentFilters = {}, regionData = {}) {
   return `
     <div class="bg-white rounded-xl border border-gray-100 p-4">
       <div class="flex items-center justify-between mb-4">
@@ -52,6 +55,24 @@ export function createFilterPanel(currentFilters = {}) {
               </label>
             `).join('')}
           </div>
+
+          ${createRegionSelect(
+            'region-communities',
+            'region-communities-wrapper',
+            'Comunidad autonoma',
+            regionData.communities || [],
+            currentFilters.regiones,
+            currentFilters.tipoAdministracion === 'A',
+          )}
+
+          ${createRegionSelect(
+            'region-provinces',
+            'region-provinces-wrapper',
+            'Provincia',
+            regionData.provinces || [],
+            currentFilters.regiones,
+            currentFilters.tipoAdministracion === 'L',
+          )}
         </fieldset>
 
         <!-- Date range -->
@@ -104,4 +125,34 @@ export function createFilterPanel(currentFilters = {}) {
  */
 function hasActiveFilters(filters) {
   return !!(filters.tipoAdministracion || filters.fechaDesde || filters.fechaHasta || filters.regiones)
+}
+
+/**
+ * Create a region select dropdown.
+ * @param {string} id - Element id for the select
+ * @param {string} wrapperId - Element id for the wrapper div
+ * @param {string} label - Placeholder label
+ * @param {Array<{id: number, name: string}>} options - Region options
+ * @param {string} selectedValue - Currently selected region id
+ * @param {boolean} visible - Whether to show the dropdown
+ * @returns {string} HTML
+ */
+function createRegionSelect(id, wrapperId, label, options, selectedValue, visible) {
+  if (options.length === 0) return `<div id="${wrapperId}" class="hidden"></div>`
+  return `
+    <div id="${wrapperId}" class="${visible ? 'mt-2' : 'hidden mt-2'}">
+      <select
+        id="${id}"
+        class="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg
+               focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary"
+      >
+        <option value="">${escapeHtml(label)}</option>
+        ${options.map((r) => `
+          <option value="${r.id}" ${String(r.id) === String(selectedValue) ? 'selected' : ''}>
+            ${escapeHtml(r.name)}
+          </option>
+        `).join('')}
+      </select>
+    </div>
+  `
 }

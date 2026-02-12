@@ -3,6 +3,7 @@
  */
 
 import { searchGrants } from '../utils/api.js'
+import { COMMUNITIES, PROVINCES } from '../utils/regionCache.js'
 import { createSearchBar } from '../components/SearchBar.js'
 import { createGrantList } from '../components/GrantList.js'
 import { createFilterPanel } from '../components/FilterPanel.js'
@@ -58,11 +59,15 @@ export async function renderSearchPage(params) {
   const baseUrl = `/buscar?${baseParams.toString()}`
 
   return `
+    <a href="/" data-link class="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-700 transition-colors mb-4">
+      <span>&#8592;</span> Inicio
+    </a>
+
     ${createSearchBar(q)}
 
     <div class="mt-6 flex flex-col md:flex-row gap-6">
       <aside class="md:w-60 shrink-0 order-2 md:order-1">
-        ${createFilterPanel(params)}
+        ${createFilterPanel(params, { communities: COMMUNITIES, provinces: PROVINCES })}
       </aside>
 
       <div class="flex-1 order-1 md:order-2">

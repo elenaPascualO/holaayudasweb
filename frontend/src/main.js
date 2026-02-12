@@ -88,6 +88,12 @@ function setupEventListeners() {
   if (clearBtn) {
     clearBtn.addEventListener('click', handleClearFilters)
   }
+
+  // Region dropdown visibility based on admin type selection
+  const adminRadios = app.querySelectorAll('[name="tipoAdministracion"]')
+  adminRadios.forEach((radio) => {
+    radio.addEventListener('change', handleAdminTypeChange)
+  })
 }
 
 /**
@@ -124,6 +130,31 @@ function handleQuickFilter(e) {
 }
 
 /**
+ * Handle admin type radio change — show/hide the corresponding region dropdown.
+ */
+function handleAdminTypeChange(e) {
+  const tipo = e.target.value
+  const commWrapper = document.getElementById('region-communities-wrapper')
+  const provWrapper = document.getElementById('region-provinces-wrapper')
+
+  if (commWrapper) {
+    commWrapper.classList.toggle('hidden', tipo !== 'A')
+    if (tipo !== 'A') {
+      const sel = document.getElementById('region-communities')
+      if (sel) sel.value = ''
+    }
+  }
+
+  if (provWrapper) {
+    provWrapper.classList.toggle('hidden', tipo !== 'L')
+    if (tipo !== 'L') {
+      const sel = document.getElementById('region-provinces')
+      if (sel) sel.value = ''
+    }
+  }
+}
+
+/**
  * Handle filter form submission.
  */
 function handleFilterSubmit(e) {
@@ -139,6 +170,12 @@ function handleFilterSubmit(e) {
   // Add filter values
   const tipo = formData.get('tipoAdministracion')
   if (tipo) params.set('tipoAdministracion', tipo)
+
+  // Read region from the active dropdown
+  let regiones = ''
+  if (tipo === 'A') regiones = document.getElementById('region-communities')?.value || ''
+  if (tipo === 'L') regiones = document.getElementById('region-provinces')?.value || ''
+  if (regiones) params.set('regiones', regiones)
 
   const fechaDesde = formData.get('fechaDesde')
   if (fechaDesde) params.set('fechaDesde', fechaDesde)
