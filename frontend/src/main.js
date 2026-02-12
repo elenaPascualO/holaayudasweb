@@ -47,9 +47,12 @@ function createFooter() {
           (BDNS)
         </p>
         <p class="text-xs text-gray-300 mt-1">
-          Un proyecto de
-          <a href="https://holadatos.com" target="_blank" rel="noopener noreferrer"
-             class="text-gray-400 hover:text-primary">HolaDatos</a>
+          Un proyecto de HolaDatos ·
+          <a href="https://x.com/hola_datos_es" target="_blank" rel="noopener noreferrer"
+             class="text-gray-400 hover:text-primary">X</a>
+          ·
+          <a href="https://www.linkedin.com/company/hola-datos/" target="_blank" rel="noopener noreferrer"
+             class="text-gray-400 hover:text-primary">LinkedIn</a>
         </p>
       </div>
     </footer>

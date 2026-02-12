@@ -1,4 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#4f46e5"/>
-  <text x="32" y="44" text-anchor="middle" font-family="system-ui, sans-serif" font-size="32" font-weight="bold" fill="white">HA</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2d2d2d"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fondo circular -->
+  <circle cx="256" cy="256" r="248" fill="url(#bg)"/>
+
+  <!-- Aro sutil -->
+  <circle cx="256" cy="256" r="234" fill="none" stroke="#d4cfc7" stroke-width="2" opacity="0.3"/>
+
+  <!-- Letras "ha" serif -->
+  <text x="256" y="330" font-family="Georgia, 'Times New Roman', serif" font-size="210" font-weight="bold" fill="#d4cfc7" text-anchor="middle" opacity="0.9">ha</text>
 </svg>
