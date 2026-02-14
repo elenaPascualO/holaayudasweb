@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Social Banners - HolaDatos</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #e8e8e8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 40px;
+      padding: 40px;
+      font-family: -apple-system, sans-serif;
+    }
+    h2 { color: #666; font-size: 14px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; }
+    .banner-wrapper { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .scale-wrapper { transform: scale(0.55); transform-origin: top center; }
+    .banner { position: relative; overflow: hidden; background: #111; }
+    .banner-x { width: 1500px; height: 500px; }
+    .banner-linkedin { width: 1584px; height: 396px; }
+    .glow {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 40% 50% at 50% 48%, rgba(212,207,199,0.05) 0%, transparent 70%);
+    }
+    .grain {
+      position: absolute; inset: 0; z-index: 3; opacity: 0.2; mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 256px 256px;
+    }
+    .accent {
+      position: absolute; bottom: 0; left: 0; right: 0; height: 2px; z-index: 4;
+      background: linear-gradient(90deg, transparent 10%, rgba(212,207,199,0.2) 30%, rgba(212,207,199,0.35) 50%, rgba(212,207,199,0.2) 70%, transparent 90%);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Shared Spain path based on real geographic coordinates -->
+  <!-- lon/lat mapped: x = (lon+9.5)*38.46, y = (43.9-lat)*50 -->
+  <svg width="0" height="0" style="position:absolute;">
+    <defs>
+      <!-- ~110 points traced from real geographic coordinates -->
+      <path id="spain" d="
+        M 9,51
+        L 11,40 L 12,39 L 11,37 L 20,34 L 26,29
+        L 43,27 L 49,31 L 53,21 L 55,12
+        L 63,7 L 63,9 L 74,12 L 87,17 L 95,18
+        L 98,17 L 114,18 L 129,17 L 148,18 L 171,22
+        L 180,24 L 196,26 L 200,26 L 219,22 L 234,24
+        L 242,26 L 253,32 L 261,24 L 281,30 L 289,29 L 297,27
+        L 315,45 L 345,55 L 374,63 L 396,60
+        L 424,70 L 440,74 L 468,74 L 487,74
+        L 493,79 L 487,82 L 485,97 L 473,112
+        L 449,126 L 435,134
+        L 413,139 L 396,151 L 394,159
+        L 381,177 L 367,196 L 355,211
+        L 351,222 L 357,237 L 359,247
+        L 369,253 L 374,259 L 367,263 L 360,268
+        L 347,278 L 344,286 L 340,296
+        L 336,308 L 328,315 L 315,317 L 305,325
+        L 296,336 L 281,359 L 271,354
+        L 249,358 L 230,358 L 224,359 L 216,358
+        L 195,359 L 188,368 L 178,370 L 167,374
+        L 156,389 L 150,395
+        L 138,386 L 131,381 L 124,369
+        L 121,357 L 115,349 L 98,332 L 80,335
+        L 88,297 L 94,289 L 92,261
+        L 102,251 L 96,234 L 87,222
+        L 101,209 L 104,191 L 114,165
+        L 120,129 L 99,102 L 91,92
+        L 63,98 L 33,93 L 25,89
+        L 30,83 L 28,76 L 24,68 L 20,67 L 22,56
+        L 9,51 Z
+      "/>
+    </defs>
+  </svg>
+
+  <!-- X / Twitter Banner: 1500 x 500 -->
+  <div class="banner-wrapper">
+    <h2>X / Twitter Header — 1500 x 500 px</h2>
+    <div class="scale-wrapper">
+      <div class="banner banner-x" id="banner-x">
+        <div class="glow"></div>
+        <svg width="1500" height="500" viewBox="0 0 1500 500" xmlns="http://www.w3.org/2000/svg" style="position:relative;z-index:1;">
+          <defs>
+            <filter id="dg"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <filter id="og"><feGaussianBlur stdDeviation="6"/></filter>
+          </defs>
+
+          <!-- transform: translate(479, 33) scale(1.08) -->
+          <use href="#spain" transform="translate(479,33) scale(1.08)" stroke="#d4cfc7" stroke-width="4" fill="none" opacity="0.08" filter="url(#og)"/>
+          <use href="#spain" transform="translate(479,33) scale(1.08)" stroke="#d4cfc7" stroke-width="1.5" fill="none" opacity="0.30" stroke-linejoin="round"/>
+
+          <!-- Network: city coords transformed -->
+          <g stroke="#d4cfc7" fill="none" stroke-width="0.6">
+            <!-- Madrid (720,221) hub -->
+            <line x1="720" y1="221" x2="964" y2="169" opacity="0.12"/><!-- Barcelona -->
+            <line x1="720" y1="221" x2="752" y2="68" opacity="0.12"/><!-- Bilbao -->
+            <line x1="720" y1="221" x2="858" y2="273" opacity="0.11"/><!-- Valencia -->
+            <line x1="720" y1="221" x2="625" y2="385" opacity="0.11"/><!-- Sevilla -->
+            <line x1="720" y1="221" x2="838" y2="155" opacity="0.1"/><!-- Zaragoza -->
+            <line x1="720" y1="221" x2="827" y2="353" opacity="0.09"/><!-- Murcia -->
+            <line x1="720" y1="221" x2="610" y2="273" opacity="0.08"/><!-- Caceres -->
+            <line x1="720" y1="221" x2="678" y2="155" opacity="0.08"/><!-- Valladolid -->
+            <line x1="720" y1="221" x2="676" y2="358" opacity="0.09"/><!-- Cordoba -->
+            <line x1="720" y1="221" x2="724" y2="396" opacity="0.08"/><!-- Granada -->
+
+            <!-- Barcelona -->
+            <line x1="964" y1="169" x2="838" y2="155" opacity="0.1"/><!-- Zaragoza -->
+            <line x1="964" y1="169" x2="858" y2="273" opacity="0.08"/><!-- Valencia -->
+            <line x1="964" y1="169" x2="752" y2="68" opacity="0.06"/><!-- Bilbao -->
+
+            <!-- Bilbao -->
+            <line x1="752" y1="68" x2="519" y2="88" opacity="0.08"/><!-- Santiago -->
+            <line x1="752" y1="68" x2="838" y2="155" opacity="0.08"/><!-- Zaragoza -->
+            <line x1="752" y1="68" x2="678" y2="155" opacity="0.07"/><!-- Valladolid -->
+            <line x1="752" y1="68" x2="642" y2="103" opacity="0.06"/><!-- Leon -->
+
+            <!-- Sevilla -->
+            <line x1="625" y1="385" x2="676" y2="358" opacity="0.1"/><!-- Cordoba -->
+            <line x1="625" y1="385" x2="690" y2="421" opacity="0.08"/><!-- Malaga -->
+            <line x1="625" y1="385" x2="724" y2="396" opacity="0.07"/><!-- Granada -->
+
+            <!-- Valencia -->
+            <line x1="858" y1="273" x2="827" y2="353" opacity="0.09"/><!-- Murcia -->
+            <line x1="858" y1="273" x2="797" y2="299" opacity="0.07"/><!-- Albacete -->
+
+            <!-- Other -->
+            <line x1="519" y1="88" x2="642" y2="103" opacity="0.06"/><!-- Santiago-Leon -->
+            <line x1="690" y1="421" x2="827" y2="353" opacity="0.06"/><!-- Malaga-Murcia -->
+            <line x1="678" y1="155" x2="610" y2="273" opacity="0.06"/><!-- Valladolid-Caceres -->
+            <line x1="676" y1="358" x2="690" y2="421" opacity="0.07"/><!-- Cordoba-Malaga -->
+            <line x1="676" y1="358" x2="724" y2="396" opacity="0.06"/><!-- Cordoba-Granada -->
+            <line x1="797" y1="299" x2="827" y2="353" opacity="0.06"/><!-- Albacete-Murcia -->
+          </g>
+
+          <!-- Warm accent on key connections -->
+          <g stroke="#c8a87c" fill="none" stroke-width="0.4" opacity="0.07">
+            <line x1="720" y1="221" x2="964" y2="169"/>
+            <line x1="720" y1="221" x2="752" y2="68"/>
+            <line x1="720" y1="221" x2="858" y2="273"/>
+            <line x1="720" y1="221" x2="625" y2="385"/>
+          </g>
+
+          <!-- City dots -->
+          <g filter="url(#dg)">
+            <circle cx="720" cy="221" r="4" fill="#d4cfc7" opacity="0.9"/><!-- Madrid -->
+            <circle cx="964" cy="169" r="3.2" fill="#d4cfc7" opacity="0.85"/><!-- Barcelona -->
+            <circle cx="858" cy="273" r="2.8" fill="#d4cfc7" opacity="0.8"/><!-- Valencia -->
+            <circle cx="625" cy="385" r="2.8" fill="#d4cfc7" opacity="0.8"/><!-- Sevilla -->
+            <circle cx="752" cy="68" r="2.5" fill="#d4cfc7" opacity="0.75"/><!-- Bilbao -->
+            <circle cx="838" cy="155" r="2.3" fill="#d4cfc7" opacity="0.7"/><!-- Zaragoza -->
+            <circle cx="827" cy="353" r="2.3" fill="#d4cfc7" opacity="0.65"/><!-- Murcia -->
+            <circle cx="690" cy="421" r="2.3" fill="#d4cfc7" opacity="0.65"/><!-- Malaga -->
+            <circle cx="519" cy="88" r="2.2" fill="#d4cfc7" opacity="0.6"/><!-- Santiago -->
+            <circle cx="676" cy="358" r="2.2" fill="#d4cfc7" opacity="0.65"/><!-- Cordoba -->
+            <circle cx="678" cy="155" r="2" fill="#d4cfc7" opacity="0.6"/><!-- Valladolid -->
+            <circle cx="610" cy="273" r="1.8" fill="#d4cfc7" opacity="0.5"/><!-- Caceres -->
+            <circle cx="642" cy="103" r="1.8" fill="#d4cfc7" opacity="0.5"/><!-- Leon -->
+            <circle cx="724" cy="396" r="1.8" fill="#d4cfc7" opacity="0.5"/><!-- Granada -->
+            <circle cx="797" cy="299" r="1.8" fill="#d4cfc7" opacity="0.45"/><!-- Albacete -->
+            <circle cx="910" cy="120" r="1.5" fill="#d4cfc7" opacity="0.4"/><!-- Lleida -->
+            <circle cx="700" cy="80" r="1.5" fill="#d4cfc7" opacity="0.35"/><!-- Pamplona -->
+            <circle cx="640" cy="210" r="1.5" fill="#d4cfc7" opacity="0.35"/><!-- Salamanca -->
+            <circle cx="870" cy="228" r="1.3" fill="#d4cfc7" opacity="0.3"/><!-- Teruel -->
+          </g>
+
+          <!-- Madrid warm glow -->
+          <circle cx="720" cy="221" r="50" fill="#c8a87c" opacity="0.025"/>
+          <circle cx="720" cy="221" r="20" fill="#d4cfc7" opacity="0.035"/>
+        </svg>
+        <div class="grain"></div>
+        <div class="accent"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LinkedIn Banner: 1584 x 396 -->
+  <div class="banner-wrapper">
+    <h2>LinkedIn Banner — 1584 x 396 px</h2>
+    <div class="scale-wrapper">
+      <div class="banner banner-linkedin" id="banner-linkedin">
+        <div class="glow"></div>
+        <svg width="1584" height="396" viewBox="0 0 1584 396" xmlns="http://www.w3.org/2000/svg" style="position:relative;z-index:1;">
+          <defs>
+            <filter id="dg2"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <filter id="og2"><feGaussianBlur stdDeviation="5"/></filter>
+          </defs>
+
+          <!-- transform: translate(579, 27) scale(0.85) -->
+          <use href="#spain" transform="translate(579,27) scale(0.85)" stroke="#d4cfc7" stroke-width="4" fill="none" opacity="0.08" filter="url(#og2)"/>
+          <use href="#spain" transform="translate(579,27) scale(0.85)" stroke="#d4cfc7" stroke-width="1.5" fill="none" opacity="0.30" stroke-linejoin="round"/>
+
+          <!-- Cities: x' = 579 + x*0.85, y' = 27 + y*0.85 -->
+          <g stroke="#d4cfc7" fill="none" stroke-width="0.6">
+            <line x1="769" y1="175" x2="961" y2="134" opacity="0.12"/>
+            <line x1="769" y1="175" x2="794" y2="54" opacity="0.12"/>
+            <line x1="769" y1="175" x2="877" y2="216" opacity="0.11"/>
+            <line x1="769" y1="175" x2="694" y2="304" opacity="0.11"/>
+            <line x1="769" y1="175" x2="861" y2="123" opacity="0.1"/>
+            <line x1="769" y1="175" x2="853" y2="279" opacity="0.09"/>
+            <line x1="769" y1="175" x2="682" y2="216" opacity="0.08"/>
+            <line x1="769" y1="175" x2="735" y2="123" opacity="0.08"/>
+            <line x1="769" y1="175" x2="734" y2="283" opacity="0.09"/>
+            <line x1="769" y1="175" x2="772" y2="313" opacity="0.08"/>
+            <line x1="961" y1="134" x2="861" y2="123" opacity="0.1"/>
+            <line x1="961" y1="134" x2="877" y2="216" opacity="0.08"/>
+            <line x1="794" y1="54" x2="610" y2="70" opacity="0.08"/>
+            <line x1="794" y1="54" x2="861" y2="123" opacity="0.08"/>
+            <line x1="794" y1="54" x2="735" y2="123" opacity="0.07"/>
+            <line x1="794" y1="54" x2="707" y2="82" opacity="0.06"/>
+            <line x1="694" y1="304" x2="734" y2="283" opacity="0.1"/>
+            <line x1="694" y1="304" x2="745" y2="332" opacity="0.08"/>
+            <line x1="694" y1="304" x2="772" y2="313" opacity="0.07"/>
+            <line x1="877" y1="216" x2="853" y2="279" opacity="0.09"/>
+            <line x1="877" y1="216" x2="829" y2="236" opacity="0.07"/>
+            <line x1="610" y1="70" x2="707" y2="82" opacity="0.06"/>
+            <line x1="745" y1="332" x2="853" y2="279" opacity="0.06"/>
+            <line x1="735" y1="123" x2="682" y2="216" opacity="0.06"/>
+            <line x1="734" y1="283" x2="745" y2="332" opacity="0.07"/>
+          </g>
+
+          <g stroke="#c8a87c" fill="none" stroke-width="0.4" opacity="0.07">
+            <line x1="769" y1="175" x2="961" y2="134"/>
+            <line x1="769" y1="175" x2="877" y2="216"/>
+            <line x1="769" y1="175" x2="694" y2="304"/>
+          </g>
+
+          <g filter="url(#dg2)">
+            <circle cx="769" cy="175" r="3.5" fill="#d4cfc7" opacity="0.9"/>
+            <circle cx="961" cy="134" r="2.8" fill="#d4cfc7" opacity="0.85"/>
+            <circle cx="877" cy="216" r="2.5" fill="#d4cfc7" opacity="0.8"/>
+            <circle cx="694" cy="304" r="2.5" fill="#d4cfc7" opacity="0.8"/>
+            <circle cx="794" cy="54" r="2.2" fill="#d4cfc7" opacity="0.75"/>
+            <circle cx="861" cy="123" r="2" fill="#d4cfc7" opacity="0.7"/>
+            <circle cx="853" cy="279" r="2" fill="#d4cfc7" opacity="0.65"/>
+            <circle cx="745" cy="332" r="2" fill="#d4cfc7" opacity="0.65"/>
+            <circle cx="610" cy="70" r="2" fill="#d4cfc7" opacity="0.6"/>
+            <circle cx="734" cy="283" r="2" fill="#d4cfc7" opacity="0.65"/>
+            <circle cx="735" cy="123" r="1.8" fill="#d4cfc7" opacity="0.6"/>
+            <circle cx="682" cy="216" r="1.6" fill="#d4cfc7" opacity="0.5"/>
+            <circle cx="707" cy="82" r="1.6" fill="#d4cfc7" opacity="0.5"/>
+            <circle cx="772" cy="313" r="1.6" fill="#d4cfc7" opacity="0.5"/>
+            <circle cx="829" cy="236" r="1.6" fill="#d4cfc7" opacity="0.45"/>
+            <circle cx="920" cy="96" r="1.3" fill="#d4cfc7" opacity="0.4"/>
+            <circle cx="710" cy="205" r="1.3" fill="#d4cfc7" opacity="0.35"/>
+            <circle cx="830" cy="180" r="1.2" fill="#d4cfc7" opacity="0.3"/>
+          </g>
+
+          <circle cx="769" cy="175" r="45" fill="#c8a87c" opacity="0.025"/>
+          <circle cx="769" cy="175" r="18" fill="#d4cfc7" opacity="0.035"/>
+        </svg>
+        <div class="grain"></div>
+        <div class="accent"></div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
