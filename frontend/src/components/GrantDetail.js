@@ -250,19 +250,26 @@ function createDocumentsSection(grant) {
       <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">Documentos</h2>
       <ul class="space-y-2">
         ${docs.map((d) => `
-          <li class="flex items-center gap-2 text-sm">
-            <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-            </svg>
+          <li>
             ${d.id ? `
               <a href="${downloadBase}${encodeURIComponent(d.id)}"
                  target="_blank" rel="noopener noreferrer"
-                 class="text-primary hover:underline">
-                ${escapeHtml(d.descripcion || d.nombreFic || 'Documento')}
+                 class="flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-gray-50
+                        hover:bg-primary/5 text-primary no-underline transition-colors group">
+                <svg class="w-4 h-4 text-gray-400 group-hover:text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <span class="underline underline-offset-2">${escapeHtml(d.descripcion || d.nombreFic || 'Documento')}</span>
               </a>
             ` : `
-              <span class="text-gray-700">${escapeHtml(d.descripcion || d.nombreFic || 'Documento')}</span>
+              <div class="flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-gray-50">
+                <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                </svg>
+                <span class="text-gray-700">${escapeHtml(d.descripcion || d.nombreFic || 'Documento')}</span>
+              </div>
             `}
           </li>
         `).join('')}
@@ -285,10 +292,11 @@ function createBasesSection(grant) {
           href="${escapeHtml(grant.urlBasesReguladoras)}"
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+          class="inline-flex items-center gap-2 px-4 py-2 border border-primary text-primary font-medium
+                 rounded-lg hover:bg-primary hover:text-white transition-colors no-underline text-sm"
         >
           Ver bases reguladoras
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                   d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
           </svg>
@@ -313,10 +321,11 @@ function createOfficialSourceSection(grant) {
         href="${officialUrl}"
         target="_blank"
         rel="noopener noreferrer"
-        class="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+        class="inline-flex items-center gap-2 px-4 py-2 border border-primary text-primary font-medium
+               rounded-lg hover:bg-primary hover:text-white transition-colors no-underline text-sm"
       >
         Ver en infosubvenciones.es (BDNS)
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
         </svg>
