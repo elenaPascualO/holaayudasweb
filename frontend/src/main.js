@@ -45,10 +45,13 @@ function createFooter() {
     <footer class="border-t border-gray-100 mt-12 py-6">
       <div class="max-w-5xl mx-auto px-4 text-center">
         <p class="text-xs text-gray-400">
-          Hola Ayudas · Datos de
+          Los resultados se obtienen en tiempo real de
           <a href="https://www.infosubvenciones.es" target="_blank" rel="noopener noreferrer"
              class="text-gray-500 hover:text-primary">infosubvenciones.es</a>
-          (BDNS)
+          (BDNS).
+        </p>
+        <p class="text-xs text-gray-400 mt-0.5">
+          Hola Ayudas es solo una interfaz mas amigable para consultar los datos oficiales.
         </p>
         <p class="text-xs text-gray-300 mt-1">
           Un proyecto de HolaDatos ·
