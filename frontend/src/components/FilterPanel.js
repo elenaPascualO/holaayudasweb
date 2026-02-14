@@ -82,26 +82,18 @@ export function createFilterPanel(currentFilters = {}, regionData = {}) {
           </legend>
           <div class="space-y-2">
             <div>
-              <label class="text-xs text-gray-400" for="fechaDesde">Desde</label>
-              <input
-                type="date"
-                id="fechaDesde"
-                name="fechaDesde"
-                value="${escapeHtml(currentFilters.fechaDesde || '')}"
-                class="w-full mt-0.5 px-3 py-1.5 text-sm border border-gray-200 rounded-lg
-                       focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary"
-              />
+              <label class="text-xs text-gray-400">Desde</label>
+              <div class="flex gap-1.5 mt-0.5">
+                ${createYearSelect('fechaDesdeYear', currentFilters.fechaDesde)}
+                ${createMonthSelect('fechaDesdeMonth', currentFilters.fechaDesde)}
+              </div>
             </div>
             <div>
-              <label class="text-xs text-gray-400" for="fechaHasta">Hasta</label>
-              <input
-                type="date"
-                id="fechaHasta"
-                name="fechaHasta"
-                value="${escapeHtml(currentFilters.fechaHasta || '')}"
-                class="w-full mt-0.5 px-3 py-1.5 text-sm border border-gray-200 rounded-lg
-                       focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary"
-              />
+              <label class="text-xs text-gray-400">Hasta</label>
+              <div class="flex gap-1.5 mt-0.5">
+                ${createYearSelect('fechaHastaYear', currentFilters.fechaHasta)}
+                ${createMonthSelect('fechaHastaMonth', currentFilters.fechaHasta)}
+              </div>
             </div>
           </div>
         </fieldset>
@@ -115,6 +107,80 @@ export function createFilterPanel(currentFilters = {}, regionData = {}) {
         </button>
       </form>
     </div>
+  `
+}
+
+const MONTH_NAMES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+]
+
+const FIRST_YEAR = 2003
+
+/**
+ * Extract year from a YYYY-MM-DD date string.
+ * @param {string} dateStr
+ * @returns {string}
+ */
+function extractYear(dateStr) {
+  if (!dateStr) return ''
+  return dateStr.split('-')[0] || ''
+}
+
+/**
+ * Extract month (1-indexed) from a YYYY-MM-DD date string.
+ * @param {string} dateStr
+ * @returns {string}
+ */
+function extractMonth(dateStr) {
+  if (!dateStr) return ''
+  const parts = dateStr.split('-')
+  return parts[1] ? String(parseInt(parts[1], 10)) : ''
+}
+
+/**
+ * Create a year <select> dropdown (current year down to FIRST_YEAR).
+ * @param {string} id - Element id
+ * @param {string} dateStr - Current YYYY-MM-DD value to pre-select
+ * @returns {string} HTML
+ */
+function createYearSelect(id, dateStr) {
+  const currentYear = new Date().getFullYear()
+  const selected = extractYear(dateStr)
+  let options = '<option value="">Año</option>'
+  for (let y = currentYear; y >= FIRST_YEAR; y--) {
+    options += `<option value="${y}" ${String(y) === selected ? 'selected' : ''}>${y}</option>`
+  }
+  return `
+    <select
+      id="${id}"
+      name="${id}"
+      class="flex-1 min-w-0 px-2 py-1.5 text-sm border border-gray-200 rounded-lg
+             focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary"
+    >${options}</select>
+  `
+}
+
+/**
+ * Create a month <select> dropdown.
+ * @param {string} id - Element id
+ * @param {string} dateStr - Current YYYY-MM-DD value to pre-select
+ * @returns {string} HTML
+ */
+function createMonthSelect(id, dateStr) {
+  const selected = extractMonth(dateStr)
+  let options = '<option value="">Mes</option>'
+  MONTH_NAMES.forEach((name, i) => {
+    const val = i + 1
+    options += `<option value="${val}" ${String(val) === selected ? 'selected' : ''}>${name}</option>`
+  })
+  return `
+    <select
+      id="${id}"
+      name="${id}"
+      class="flex-1 min-w-0 px-2 py-1.5 text-sm border border-gray-200 rounded-lg
+             focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary"
+    >${options}</select>
   `
 }
 
