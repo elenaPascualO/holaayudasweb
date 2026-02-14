@@ -2,18 +2,18 @@
 
 import json
 import logging
-import smtplib
 import time
-from email.message import EmailMessage
+from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 try:
-    from backend.config import SMTP_EMAIL, SMTP_APP_PASSWORD, FEEDBACK_EMAIL_TO
+    from backend.config import DISCORD_WEBHOOK_URL
 except ImportError:
-    from config import SMTP_EMAIL, SMTP_APP_PASSWORD, FEEDBACK_EMAIL_TO
+    from config import DISCORD_WEBHOOK_URL
 
 logger = logging.getLogger(__name__)
 
@@ -45,37 +45,38 @@ def _check_rate_limit(client_ip: str) -> None:
     _rate_limit[client_ip] = timestamps
 
 
-def _send_feedback_email(email: str | None, message: str) -> None:
-    """Send feedback notification via Gmail SMTP."""
-    if not SMTP_EMAIL or not SMTP_APP_PASSWORD or not FEEDBACK_EMAIL_TO:
-        logger.warning("Email notification not configured, skipping")
+async def _send_discord_notification(email: str | None, message: str) -> None:
+    """Send feedback notification to Discord via webhook."""
+    if not DISCORD_WEBHOOK_URL:
+        logger.warning("DISCORD_WEBHOOK_URL not configured, skipping notification")
         return
 
-    reply_from = email or "anonimo"
-    subject = f"[Hola Ayudas] Feedback de {reply_from}"
-    body = f"Mensaje de feedback en Hola Ayudas:\n\nDe: {reply_from}\n\n{message}"
-
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = SMTP_EMAIL
-    msg["To"] = FEEDBACK_EMAIL_TO
-    if email:
-        msg["Reply-To"] = email
-    msg.set_content(body)
+    sender = email or "anonymous"
+    payload = {
+        "embeds": [
+            {
+                "title": "New feedback",
+                "color": 0x2563EB,
+                "fields": [
+                    {"name": "From", "value": sender, "inline": True},
+                    {"name": "Message", "value": message},
+                ],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        ]
+    }
 
     try:
-        smtp = smtplib.SMTP("smtp.gmail.com", 587)
-        smtp.starttls()
-        smtp.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
-        smtp.send_message(msg)
-        smtp.quit()
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10.0)
+            resp.raise_for_status()
     except Exception:
-        logger.exception("Failed to send feedback email")
+        logger.exception("Failed to send Discord notification")
 
 
 @router.post("/feedback", status_code=201)
 async def submit_feedback(body: FeedbackRequest, request: Request) -> dict[str, str]:
-    """Save a feedback message and send email notification."""
+    """Save a feedback message and send Discord notification."""
     _check_rate_limit(request.client.host if request.client else "unknown")
 
     email = body.email.strip() or None
@@ -90,6 +91,6 @@ async def submit_feedback(body: FeedbackRequest, request: Request) -> dict[str, 
     with FEEDBACK_FILE.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-    _send_feedback_email(email, message)
+    await _send_discord_notification(email, message)
 
     return {"status": "ok"}

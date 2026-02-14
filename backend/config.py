@@ -53,7 +53,5 @@ def get_cors_origins() -> list[str]:
 
 CORS_ORIGINS: list[str] = get_cors_origins()
 
-# SMTP settings for feedback email notifications
-SMTP_EMAIL: str = os.getenv("SMTP_EMAIL", "")
-SMTP_APP_PASSWORD: str = os.getenv("SMTP_APP_PASSWORD", "")
-FEEDBACK_EMAIL_TO: str = os.getenv("FEEDBACK_EMAIL_TO", "")
+# Discord webhook for feedback notifications
+DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL", "")
