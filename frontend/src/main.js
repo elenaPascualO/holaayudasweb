@@ -11,6 +11,10 @@ import { createLoadingSpinner } from './components/LoadingSpinner.js'
 import { renderHomePage } from './pages/home.js'
 import { renderSearchPage } from './pages/search.js'
 import { renderDetailPage } from './pages/detail.js'
+import { getGrantDetailCached } from './utils/api.js'
+import { getGrantStatus } from './utils/dates.js'
+import { createStatusBadge } from './components/StatusBadge.js'
+import { formatCurrency } from './utils/formatters.js'
 
 const app = document.querySelector('#app')
 
@@ -94,6 +98,12 @@ function setupEventListeners() {
   adminRadios.forEach((radio) => {
     radio.addEventListener('change', handleAdminTypeChange)
   })
+
+  // Sort selector
+  const sortSelect = document.getElementById('sort-select')
+  if (sortSelect) {
+    sortSelect.addEventListener('change', handleSortChange)
+  }
 }
 
 /**
@@ -116,6 +126,8 @@ function handleSearchSubmit(e) {
   const q = input?.value.trim()
   if (q) {
     navigate(`/buscar?q=${encodeURIComponent(q)}`)
+  } else {
+    navigate('/buscar')
   }
 }
 
@@ -162,9 +174,9 @@ function handleFilterSubmit(e) {
   const formData = new FormData(e.target)
   const params = new URLSearchParams()
 
-  // Preserve the current search query
-  const currentParams = new URLSearchParams(window.location.search)
-  const q = currentParams.get('q')
+  // Read search query from the input (not URL) so clearing it works
+  const searchInput = document.getElementById('search-input')
+  const q = searchInput?.value.trim()
   if (q) params.set('q', q)
 
   // Add filter values
@@ -177,12 +189,40 @@ function handleFilterSubmit(e) {
   if (tipo === 'L') regiones = document.getElementById('region-provinces')?.value || ''
   if (regiones) params.set('regiones', regiones)
 
-  const fechaDesde = formData.get('fechaDesde')
-  if (fechaDesde) params.set('fechaDesde', fechaDesde)
+  // Preserve sort order
+  const currentParams = new URLSearchParams(window.location.search)
+  const orden = currentParams.get('orden')
+  if (orden) params.set('orden', orden)
 
-  const fechaHasta = formData.get('fechaHasta')
-  if (fechaHasta) params.set('fechaHasta', fechaHasta)
+  // Build date params from year+month selects
+  const desdeYear = formData.get('fechaDesdeYear')
+  if (desdeYear) {
+    const desdeMonth = formData.get('fechaDesdeMonth') || '1'
+    params.set('fechaDesde', `${desdeYear}-${String(desdeMonth).padStart(2, '0')}-01`)
+  }
 
+  const hastaYear = formData.get('fechaHastaYear')
+  if (hastaYear) {
+    const hastaMonth = formData.get('fechaHastaMonth') || '12'
+    const lastDay = new Date(hastaYear, hastaMonth, 0).getDate()
+    params.set('fechaHasta', `${hastaYear}-${String(hastaMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`)
+  }
+
+  navigate(`/buscar?${params.toString()}`)
+}
+
+/**
+ * Handle sort order change.
+ */
+function handleSortChange(e) {
+  const params = new URLSearchParams(window.location.search)
+  const orden = e.target.value
+  if (orden === 'asc') {
+    params.set('orden', orden)
+  } else {
+    params.delete('orden')
+  }
+  params.delete('page')
   navigate(`/buscar?${params.toString()}`)
 }
 
@@ -195,18 +235,58 @@ function handleClearFilters() {
   navigate(q ? `/buscar?q=${encodeURIComponent(q)}` : '/buscar')
 }
 
+/**
+ * Enrich visible grant cards with detail data (status badge + budget).
+ * Fetches details in parallel with limited concurrency.
+ */
+function enrichVisibleCards() {
+  const badges = app.querySelectorAll('[data-grant-badge]')
+  if (badges.length === 0) return
+
+  const codes = [...new Set([...badges].map((el) => el.dataset.grantBadge))]
+  const MAX_CONCURRENT = 5
+  let index = 0
+
+  function updateCard(code, detail) {
+    const status = getGrantStatus(detail)
+    const badgeEl = app.querySelector(`[data-grant-badge="${code}"]`)
+    if (badgeEl) badgeEl.innerHTML = createStatusBadge(status)
+
+    const budgetEl = app.querySelector(`[data-grant-budget="${code}"]`)
+    if (budgetEl && detail.presupuestoTotal) {
+      budgetEl.classList.add('inline-flex', 'items-center', 'px-2.5', 'py-0.5', 'rounded-full', 'text-xs', 'font-semibold', 'bg-blue-50', 'text-blue-700')
+      budgetEl.textContent = formatCurrency(detail.presupuestoTotal)
+    }
+  }
+
+  function next() {
+    if (index >= codes.length) return
+    const code = codes[index++]
+    getGrantDetailCached(code)
+      .then((detail) => updateCard(code, detail))
+      .catch(() => {})
+      .finally(next)
+  }
+
+  for (let i = 0; i < Math.min(MAX_CONCURRENT, codes.length); i++) {
+    next()
+  }
+}
+
 // --- Register routes ---
 
 registerRoute('/', async () => {
   renderLoading()
   const html = await renderHomePage()
   render(html)
+  enrichVisibleCards()
 })
 
 registerRoute('/buscar', async (params) => {
   renderLoading()
   const html = await renderSearchPage(params)
   render(html)
+  enrichVisibleCards()
 })
 
 registerRoute('/ayuda/:bdnsCode', async (params) => {

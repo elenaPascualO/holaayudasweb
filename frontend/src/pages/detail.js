@@ -2,7 +2,7 @@
  * Grant detail page.
  */
 
-import { getGrantDetail } from '../utils/api.js'
+import { getGrantDetailCached } from '../utils/api.js'
 import { createGrantDetail } from '../components/GrantDetail.js'
 import { escapeHtml } from '../utils/formatters.js'
 
@@ -13,7 +13,7 @@ import { escapeHtml } from '../utils/formatters.js'
  */
 export async function renderDetailPage(bdnsCode) {
   try {
-    const grant = await getGrantDetail(bdnsCode)
+    const grant = await getGrantDetailCached(bdnsCode)
     return createGrantDetail(grant)
   } catch {
     return `

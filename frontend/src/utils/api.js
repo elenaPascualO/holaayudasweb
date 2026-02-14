@@ -3,6 +3,8 @@
  * All requests go through /api/* which Vite proxies to the backend in dev.
  */
 
+import { getCachedDetail, setCachedDetail } from './detailCache.js'
+
 const BASE = '/api'
 
 /**
@@ -42,6 +44,7 @@ function buildQuery(params) {
  * @param {string} [params.fechaHasta] - End date (YYYY-MM-DD)
  * @param {string} [params.tipoAdministracion] - C, A, L, or O
  * @param {string} [params.regiones] - Region IDs (comma-separated)
+ * @param {string} [params.orden] - Sort direction: asc or desc
  * @returns {Promise<Object>} Paginated results
  */
 export async function searchGrants(params = {}) {
@@ -65,6 +68,19 @@ export async function getLatestGrants(page = 0, pageSize = 10) {
  */
 export async function getGrantDetail(bdnsCode) {
   return fetchJson(`${BASE}/convocatorias/${encodeURIComponent(bdnsCode)}`)
+}
+
+/**
+ * Get grant detail with frontend in-memory cache.
+ * @param {string} bdnsCode - The BDNS code
+ * @returns {Promise<Object>} Grant detail
+ */
+export async function getGrantDetailCached(bdnsCode) {
+  const cached = getCachedDetail(bdnsCode)
+  if (cached) return cached
+  const data = await getGrantDetail(bdnsCode)
+  setCachedDetail(bdnsCode, data)
+  return data
 }
 
 /**
