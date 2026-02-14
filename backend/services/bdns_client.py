@@ -24,6 +24,13 @@ logger = logging.getLogger(__name__)
 # Shared async client (created lazily)
 _client: httpx.AsyncClient | None = None
 
+# Global semaphore to limit concurrent outbound BDNS requests
+_global_semaphore = asyncio.Semaphore(5)
+
+# Retry settings for 429 responses
+_MAX_RETRIES = 2
+_RETRY_BASE_DELAY = 1.0  # seconds
+
 # Catalogs that require vpd parameter
 CATALOGS_WITH_VPD = {"finalidades", "beneficiarios"}
 
@@ -117,7 +124,10 @@ def _build_search_params(params: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _fetch(endpoint: str, params: dict[str, Any] | None = None) -> Any:
-    """Make a GET request to the BDNS API.
+    """Make a GET request to the BDNS API with rate limiting and retry.
+
+    Acquires the global semaphore before each request to limit concurrency.
+    Retries on 429 (Too Many Requests) with exponential backoff.
 
     Args:
         endpoint: API path (e.g., "/convocatorias/busqueda").
@@ -130,23 +140,37 @@ async def _fetch(endpoint: str, params: dict[str, Any] | None = None) -> Any:
         BDNSError: On HTTP or connection errors.
     """
     client = await get_client()
-    try:
-        response = await client.get(endpoint, params=params)
-        if response.status_code == 404:
-            raise BDNSError("Resource not found", status_code=404)
-        if response.status_code == 400:
-            raise BDNSError("Invalid request parameters", status_code=400)
-        response.raise_for_status()
-        return response.json()
-    except httpx.TimeoutException:
-        logger.error("Timeout fetching %s", endpoint)
-        raise BDNSError("BDNS API timeout", status_code=504)
-    except httpx.HTTPStatusError as e:
-        logger.error("HTTP error %s fetching %s", e.response.status_code, endpoint)
-        raise BDNSError(f"BDNS API error: {e.response.status_code}", status_code=502)
-    except httpx.HTTPError as e:
-        logger.error("Connection error fetching %s: %s", endpoint, str(e))
-        raise BDNSError("Cannot connect to BDNS API", status_code=502)
+
+    for attempt in range(_MAX_RETRIES + 1):
+        async with _global_semaphore:
+            try:
+                response = await client.get(endpoint, params=params)
+                if response.status_code == 429:
+                    if attempt < _MAX_RETRIES:
+                        delay = _RETRY_BASE_DELAY * (2 ** attempt)
+                        logger.warning(
+                            "429 Too Many Requests for %s, retrying in %.1fs (attempt %d/%d)",
+                            endpoint, delay, attempt + 1, _MAX_RETRIES,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    logger.error("429 Too Many Requests for %s after %d retries", endpoint, _MAX_RETRIES)
+                    raise BDNSError("BDNS API rate limited", status_code=429)
+                if response.status_code == 404:
+                    raise BDNSError("Resource not found", status_code=404)
+                if response.status_code == 400:
+                    raise BDNSError("Invalid request parameters", status_code=400)
+                response.raise_for_status()
+                return response.json()
+            except httpx.TimeoutException:
+                logger.error("Timeout fetching %s", endpoint)
+                raise BDNSError("BDNS API timeout", status_code=504)
+            except httpx.HTTPStatusError as e:
+                logger.error("HTTP error %s fetching %s", e.response.status_code, endpoint)
+                raise BDNSError(f"BDNS API error: {e.response.status_code}", status_code=502)
+            except httpx.HTTPError as e:
+                logger.error("Connection error fetching %s: %s", endpoint, str(e))
+                raise BDNSError("Cannot connect to BDNS API", status_code=502)
 
 
 async def search_convocatorias(params: dict[str, Any]) -> dict[str, Any]:
@@ -334,7 +358,7 @@ async def search_convocatorias_enriched(
     """
     desired_page_size = int(params.get("pageSize", 20))
     enriched_results: list[dict[str, Any]] = []
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(5)
     max_extra_pages = 3
     current_page = int(params.get("page", 0))
     total_elements_original = 0

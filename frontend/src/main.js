@@ -387,7 +387,7 @@ function enrichVisibleCards() {
       .map((el) => el.dataset.grantBadge)
   )]
   if (codes.length === 0) return
-  const MAX_CONCURRENT = 5
+  const MAX_CONCURRENT = 2
   let index = 0
 
   function updateCard(code, detail) {
