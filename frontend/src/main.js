@@ -15,6 +15,7 @@ import { getGrantDetailCached, submitFeedback } from './utils/api.js'
 import { getGrantStatus } from './utils/dates.js'
 import { createStatusBadge } from './components/StatusBadge.js'
 import { formatCurrency } from './utils/formatters.js'
+import { track, events } from './utils/tracking.js'
 
 const app = document.querySelector('#app')
 
@@ -148,7 +149,11 @@ function setupEventListeners() {
   if (feedbackToggle) {
     feedbackToggle.addEventListener('click', () => {
       const wrapper = document.getElementById('feedback-form-wrapper')
-      if (wrapper) wrapper.classList.toggle('hidden')
+      if (wrapper) {
+        const wasHidden = wrapper.classList.contains('hidden')
+        wrapper.classList.toggle('hidden')
+        if (wasHidden) track(events.FEEDBACK_OPEN)
+      }
     })
   }
 
@@ -157,6 +162,23 @@ function setupEventListeners() {
   if (feedbackForm) {
     feedbackForm.addEventListener('submit', handleFeedbackSubmit)
   }
+
+  // Track detail page external link clicks
+  app.querySelectorAll('a[target="_blank"]').forEach((link) => {
+    link.addEventListener('click', () => {
+      const href = link.getAttribute('href') || ''
+      const text = link.textContent.toLowerCase()
+      if (text.includes('solicitar en sede')) {
+        track(events.DETAIL_APPLY)
+      } else if (href.includes('idDocumento')) {
+        track(events.DETAIL_DOCUMENT)
+      } else if (text.includes('bases reguladoras')) {
+        track(events.DETAIL_BASES)
+      } else if (href.includes('infosubvenciones.es/bdnstrans/GE')) {
+        track(events.DETAIL_OFFICIAL)
+      }
+    })
+  })
 }
 
 /**
@@ -167,7 +189,15 @@ function handleLinkClick(e) {
   if (!link) return
   e.preventDefault()
   const path = link.getAttribute('data-link') || link.getAttribute('href')
-  if (path && path !== '#') navigate(path)
+  if (!path || path === '#') return
+
+  // Track pagination clicks
+  if (path.includes('page=')) {
+    const pageMatch = path.match(/page=(\d+)/)
+    track(events.PAGINATION, { page: pageMatch ? parseInt(pageMatch[1], 10) + 1 : 0 })
+  }
+
+  navigate(path)
 }
 
 /**
@@ -177,6 +207,7 @@ function handleSearchSubmit(e) {
   e.preventDefault()
   const input = document.getElementById('search-input')
   const q = input?.value.trim()
+  track(events.SEARCH_SUBMIT, { query: q || '(empty)' })
   if (q) {
     navigate(`/buscar?q=${encodeURIComponent(q)}`)
   } else {
@@ -190,6 +221,7 @@ function handleSearchSubmit(e) {
 function handleQuickFilter(e) {
   const query = e.currentTarget.dataset.filter
   if (query) {
+    track(events.QUICK_FILTER, { filter: query })
     navigate(`/buscar?q=${encodeURIComponent(query)}`)
   }
 }
@@ -226,6 +258,12 @@ function handleFilterSubmit(e) {
   e.preventDefault()
   const formData = new FormData(e.target)
   const params = new URLSearchParams()
+
+  // Track filter usage
+  const activeFilters = ['estado', 'tipoAdministracion', 'fechaDesdeYear', 'fechaHastaYear']
+    .filter((k) => formData.get(k))
+    .map((k) => k.replace('Year', ''))
+  track(events.FILTER_APPLY, { filters: activeFilters.join(',') || 'none' })
 
   // Read search query from the input (not URL) so clearing it works
   const searchInput = document.getElementById('search-input')
@@ -273,6 +311,7 @@ function handleFilterSubmit(e) {
 function handleSortChange(e) {
   const params = new URLSearchParams(window.location.search)
   const orden = e.target.value
+  track(events.SORT_CHANGE, { order: orden })
   if (orden === 'asc') {
     params.set('orden', orden)
   } else {
@@ -294,6 +333,8 @@ async function handleFeedbackSubmit(e) {
   btn.disabled = true
   btn.textContent = 'Enviando...'
   if (status) status.textContent = ''
+
+  track(events.FEEDBACK_SUBMIT)
 
   try {
     await submitFeedback({
@@ -325,6 +366,7 @@ async function handleFeedbackSubmit(e) {
  * Handle clear filters button.
  */
 function handleClearFilters() {
+  track(events.FILTER_CLEAR)
   const currentParams = new URLSearchParams(window.location.search)
   const q = currentParams.get('q')
   navigate(q ? `/buscar?q=${encodeURIComponent(q)}` : '/buscar')
@@ -394,6 +436,7 @@ registerRoute('/ayuda/:bdnsCode', async (params) => {
   renderLoading()
   const html = await renderDetailPage(params.bdnsCode)
   render(html)
+  track(events.DETAIL_VIEW, { bdns: params.bdnsCode })
 })
 
 // --- Start ---
