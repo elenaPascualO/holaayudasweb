@@ -1,8 +1,10 @@
 """HTTP client for the BDNS (Base de Datos Nacional de Subvenciones) API."""
 
+import asyncio
 import hashlib
 import json
 import logging
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -239,3 +241,156 @@ async def get_catalog(catalog_name: str) -> Any:
     data = await _fetch(f"/{catalog_name}", params=params or None)
     cache.set(key, data, CACHE_TTL_CATALOGS)
     return data
+
+
+def _parse_bdns_date(date_str: str | None) -> datetime | None:
+    """Parse a BDNS date string into a datetime.
+
+    Handles both dd/mm/yyyy (BDNS native) and YYYY-MM-DD (ISO) formats,
+    mirroring the frontend parseDate() logic.
+
+    Args:
+        date_str: Date in dd/mm/yyyy or YYYY-MM-DD format.
+
+    Returns:
+        Parsed datetime or None.
+    """
+    if not date_str:
+        return None
+    try:
+        if "/" in date_str:
+            return datetime.strptime(date_str, "%d/%m/%Y")
+        if "-" in date_str:
+            return datetime.strptime(date_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None
+    return None
+
+
+def get_grant_status(grant: dict[str, Any]) -> str:
+    """Determine the application status of a grant.
+
+    Mirrors the logic in frontend/src/utils/dates.js:getGrantStatus().
+
+    Args:
+        grant: Grant detail object from BDNS.
+
+    Returns:
+        One of: "open", "closed", "upcoming", "permanent", "unknown".
+    """
+    if not grant:
+        return "unknown"
+
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Permanently open with no end date
+    if grant.get("abierto") is True and not grant.get("fechaFinSolicitud"):
+        return "permanent"
+
+    start_date = _parse_bdns_date(
+        grant.get("fechaInicioSolicitud") or grant.get("textInicio")
+    )
+    end_date = _parse_bdns_date(
+        grant.get("fechaFinSolicitud") or grant.get("textFin")
+    )
+
+    # End date in the past → closed
+    if end_date and end_date < today:
+        return "closed"
+
+    # Start date in the future → upcoming
+    if start_date and start_date > today:
+        return "upcoming"
+
+    # End date in the future (start is past or absent) → open
+    if end_date and end_date >= today:
+        return "open"
+
+    # abierto flag from BDNS
+    if grant.get("abierto") is True:
+        return "open"
+
+    return "unknown"
+
+
+# Status groups for filtering
+_OPEN_STATUSES = {"open", "upcoming", "permanent", "unknown"}
+
+
+async def search_convocatorias_enriched(
+    params: dict[str, Any], estado: str
+) -> dict[str, Any]:
+    """Search grants and enrich with detail data, filtering by status.
+
+    Fetches grant details in parallel to determine status, then filters
+    results by the requested status group.
+
+    Args:
+        params: Search parameters (same as search_convocatorias).
+        estado: Status filter — "abiertas" or "cerradas".
+
+    Returns:
+        Paginated response with enriched content (_status, _presupuestoTotal).
+    """
+    desired_page_size = int(params.get("pageSize", 20))
+    enriched_results: list[dict[str, Any]] = []
+    semaphore = asyncio.Semaphore(10)
+    max_extra_pages = 3
+    current_page = int(params.get("page", 0))
+    total_elements_original = 0
+
+    for attempt in range(1 + max_extra_pages):
+        fetch_params = {**params, "page": current_page + attempt, "pageSize": 50}
+        search_data = await search_convocatorias(fetch_params)
+
+        if attempt == 0:
+            total_elements_original = search_data.get("totalElements", 0)
+
+        items = search_data.get("content", [])
+        if not items:
+            break
+
+        async def fetch_detail(item: dict[str, Any]) -> dict[str, Any]:
+            code = str(item.get("numeroConvocatoria", ""))
+            if not code:
+                return item
+            async with semaphore:
+                try:
+                    detail = await get_convocatoria_detail(code)
+                except BDNSError:
+                    return item
+            status = get_grant_status(detail)
+            enriched = {**item, "_status": status}
+            budget = detail.get("presupuestoTotal")
+            if budget is not None:
+                enriched["_presupuestoTotal"] = budget
+            return enriched
+
+        tasks = [fetch_detail(item) for item in items]
+        enriched_items = await asyncio.gather(*tasks)
+
+        # Filter by status
+        for item in enriched_items:
+            item_status = item.get("_status", "unknown")
+            if estado == "abiertas" and item_status not in _OPEN_STATUSES:
+                continue
+            if estado == "cerradas" and item_status != "closed":
+                continue
+            enriched_results.append(item)
+
+        if len(enriched_results) >= desired_page_size:
+            break
+
+    # Trim to requested page size
+    page_results = enriched_results[:desired_page_size]
+
+    return {
+        "content": page_results,
+        "totalElements": total_elements_original,
+        "totalPages": max(
+            1,
+            (total_elements_original + desired_page_size - 1) // desired_page_size,
+        ),
+        "number": current_page,
+        "size": desired_page_size,
+    }

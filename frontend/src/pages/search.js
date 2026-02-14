@@ -21,17 +21,23 @@ export async function renderSearchPage(params) {
   const page = parseInt(params.page || '0', 10)
   const pageSize = parseInt(params.pageSize || '20', 10)
 
+  // Default fechaDesde to 1st of current month
+  const now = new Date()
+  const defaultFechaDesde = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const fechaDesde = params.fechaDesde ?? defaultFechaDesde
+
   let results
   try {
     results = await searchGrants({
       q,
       page,
       pageSize,
-      fechaDesde: params.fechaDesde,
+      fechaDesde,
       fechaHasta: params.fechaHasta,
       tipoAdministracion: params.tipoAdministracion,
       regiones: params.regiones,
       orden: params.orden,
+      estado: params.estado,
     })
   } catch {
     return `
@@ -53,11 +59,12 @@ export async function renderSearchPage(params) {
   // Build base URL for pagination (preserving all filters)
   const baseParams = new URLSearchParams()
   if (q) baseParams.set('q', q)
-  if (params.fechaDesde) baseParams.set('fechaDesde', params.fechaDesde)
+  if (fechaDesde) baseParams.set('fechaDesde', fechaDesde)
   if (params.fechaHasta) baseParams.set('fechaHasta', params.fechaHasta)
   if (params.tipoAdministracion) baseParams.set('tipoAdministracion', params.tipoAdministracion)
   if (params.regiones) baseParams.set('regiones', params.regiones)
   if (params.orden) baseParams.set('orden', params.orden)
+  if (params.estado) baseParams.set('estado', params.estado)
   const baseUrl = `/buscar?${baseParams.toString()}`
 
   return `
@@ -69,7 +76,7 @@ export async function renderSearchPage(params) {
 
     <div class="mt-6 flex flex-col md:flex-row gap-6">
       <aside class="md:w-60 shrink-0 order-2 md:order-1">
-        ${createFilterPanel(params, { communities: COMMUNITIES, provinces: PROVINCES })}
+        ${createFilterPanel({ ...params, fechaDesde }, { communities: COMMUNITIES, provinces: PROVINCES })}
       </aside>
 
       <div class="flex-1 order-1 md:order-2">

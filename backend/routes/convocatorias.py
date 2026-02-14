@@ -7,6 +7,7 @@ from backend.services.bdns_client import (
     get_latest_convocatorias,
     get_convocatoria_detail,
     search_convocatorias,
+    search_convocatorias_enriched,
 )
 
 router = APIRouter(prefix="/api", tags=["convocatorias"])
@@ -28,6 +29,9 @@ async def search_grants(
     orden: str | None = Query(
         default=None, description="Sort direction: asc or desc"
     ),
+    estado: str | None = Query(
+        default=None, description="Status filter: abiertas or cerradas"
+    ),
 ) -> dict:
     """Search grants with filters."""
     params = {
@@ -47,6 +51,8 @@ async def search_grants(
         params["orden"] = orden
 
     try:
+        if estado in ("abiertas", "cerradas"):
+            return await search_convocatorias_enriched(params, estado)
         return await search_convocatorias(params)
     except BDNSError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)

@@ -180,6 +180,9 @@ function handleFilterSubmit(e) {
   if (q) params.set('q', q)
 
   // Add filter values
+  const estado = formData.get('estado')
+  if (estado) params.set('estado', estado)
+
   const tipo = formData.get('tipoAdministracion')
   if (tipo) params.set('tipoAdministracion', tipo)
 
@@ -243,7 +246,13 @@ function enrichVisibleCards() {
   const badges = app.querySelectorAll('[data-grant-badge]')
   if (badges.length === 0) return
 
-  const codes = [...new Set([...badges].map((el) => el.dataset.grantBadge))]
+  // Skip cards already enriched by the backend
+  const codes = [...new Set(
+    [...badges]
+      .filter((el) => !el.closest('[data-enriched]'))
+      .map((el) => el.dataset.grantBadge)
+  )]
+  if (codes.length === 0) return
   const MAX_CONCURRENT = 5
   let index = 0
 

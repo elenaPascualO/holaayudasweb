@@ -4,6 +4,12 @@
 
 import { escapeHtml } from '../utils/formatters.js'
 
+const STATUS_OPTIONS = [
+  { value: '', label: 'Todas' },
+  { value: 'abiertas', label: 'Abiertas' },
+  { value: 'cerradas', label: 'Cerradas' },
+]
+
 const ADMIN_TYPES = [
   { value: '', label: 'Todas' },
   { value: 'C', label: 'Central' },
@@ -36,6 +42,27 @@ export function createFilterPanel(currentFilters = {}, regionData = {}) {
       </div>
 
       <form id="filter-form" class="space-y-5">
+        <!-- Status -->
+        <fieldset>
+          <legend class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+            Estado
+          </legend>
+          <div class="space-y-1.5">
+            ${STATUS_OPTIONS.map((s) => `
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="estado"
+                  value="${s.value}"
+                  ${(currentFilters.estado || '') === s.value ? 'checked' : ''}
+                  class="accent-primary"
+                />
+                <span class="text-sm text-gray-700">${s.label}</span>
+              </label>
+            `).join('')}
+          </div>
+        </fieldset>
+
         <!-- Admin type -->
         <fieldset>
           <legend class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
@@ -190,7 +217,7 @@ function createMonthSelect(id, dateStr) {
  * @returns {boolean}
  */
 function hasActiveFilters(filters) {
-  return !!(filters.tipoAdministracion || filters.fechaDesde || filters.fechaHasta || filters.regiones)
+  return !!(filters.estado || filters.tipoAdministracion || filters.fechaDesde || filters.fechaHasta || filters.regiones)
 }
 
 /**
