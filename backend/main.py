@@ -10,12 +10,12 @@ from fastapi.staticfiles import StaticFiles
 try:
     # Production: running from root with 'backend.main:app'
     from backend.config import CORS_ORIGINS
-    from backend.routes import catalogs_router, convocatorias_router
+    from backend.routes import catalogs_router, convocatorias_router, feedback_router
     from backend.services.bdns_client import close_client
 except ImportError:
     # Development: running from backend/ with 'main:app'
     from config import CORS_ORIGINS
-    from routes import catalogs_router, convocatorias_router
+    from routes import catalogs_router, convocatorias_router, feedback_router
     from services.bdns_client import close_client
 
 
@@ -40,13 +40,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=False,
-    allow_methods=["GET", "OPTIONS"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
 
 # Register API routes
 app.include_router(convocatorias_router)
 app.include_router(catalogs_router)
+app.include_router(feedback_router)
 
 
 @app.get("/api/health")

@@ -1,6 +1,11 @@
 """Configuration settings for Hola Ayudas."""
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Environment detection
 ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
@@ -47,3 +52,8 @@ def get_cors_origins() -> list[str]:
 
 
 CORS_ORIGINS: list[str] = get_cors_origins()
+
+# SMTP settings for feedback email notifications
+SMTP_EMAIL: str = os.getenv("SMTP_EMAIL", "")
+SMTP_APP_PASSWORD: str = os.getenv("SMTP_APP_PASSWORD", "")
+FEEDBACK_EMAIL_TO: str = os.getenv("FEEDBACK_EMAIL_TO", "")

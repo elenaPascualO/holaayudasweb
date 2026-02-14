@@ -11,7 +11,7 @@ import { createLoadingSpinner } from './components/LoadingSpinner.js'
 import { renderHomePage } from './pages/home.js'
 import { renderSearchPage } from './pages/search.js'
 import { renderDetailPage } from './pages/detail.js'
-import { getGrantDetailCached } from './utils/api.js'
+import { getGrantDetailCached, submitFeedback } from './utils/api.js'
 import { getGrantStatus } from './utils/dates.js'
 import { createStatusBadge } from './components/StatusBadge.js'
 import { formatCurrency } from './utils/formatters.js'
@@ -44,6 +44,41 @@ function createFooter() {
   return `
     <footer class="border-t border-gray-100 mt-12 py-6">
       <div class="max-w-5xl mx-auto px-4 text-center">
+        <p class="text-xs text-gray-400 mb-3">
+          <button id="feedback-toggle" class="text-primary hover:underline cursor-pointer">
+            Sugerencias o problemas? Escribenos
+          </button>
+        </p>
+        <div id="feedback-form-wrapper" class="hidden max-w-sm mx-auto mb-4">
+          <form id="feedback-form" class="text-left space-y-2">
+            <input
+              type="email"
+              name="email"
+              placeholder="Email (opcional)"
+              class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg
+                     focus:outline-none focus:border-primary"
+            />
+            <textarea
+              name="message"
+              required
+              maxlength="2000"
+              rows="3"
+              placeholder="Tu mensaje..."
+              class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg
+                     focus:outline-none focus:border-primary resize-none"
+            ></textarea>
+            <div class="flex items-center gap-2">
+              <button
+                type="submit"
+                class="px-4 py-1.5 text-xs font-medium bg-primary text-white rounded-lg
+                       hover:bg-primary-dark transition-colors"
+              >
+                Enviar
+              </button>
+              <span id="feedback-status" class="text-xs text-gray-400"></span>
+            </div>
+          </form>
+        </div>
         <p class="text-xs text-gray-400">
           Los resultados se obtienen en tiempo real de
           <a href="https://www.infosubvenciones.es" target="_blank" rel="noopener noreferrer"
@@ -106,6 +141,21 @@ function setupEventListeners() {
   const sortSelect = document.getElementById('sort-select')
   if (sortSelect) {
     sortSelect.addEventListener('change', handleSortChange)
+  }
+
+  // Feedback form toggle
+  const feedbackToggle = document.getElementById('feedback-toggle')
+  if (feedbackToggle) {
+    feedbackToggle.addEventListener('click', () => {
+      const wrapper = document.getElementById('feedback-form-wrapper')
+      if (wrapper) wrapper.classList.toggle('hidden')
+    })
+  }
+
+  // Feedback form submission
+  const feedbackForm = document.getElementById('feedback-form')
+  if (feedbackForm) {
+    feedbackForm.addEventListener('submit', handleFeedbackSubmit)
   }
 }
 
@@ -230,6 +280,45 @@ function handleSortChange(e) {
   }
   params.delete('page')
   navigate(`/buscar?${params.toString()}`)
+}
+
+/**
+ * Handle feedback form submission.
+ */
+async function handleFeedbackSubmit(e) {
+  e.preventDefault()
+  const form = e.target
+  const status = document.getElementById('feedback-status')
+  const btn = form.querySelector('button[type="submit"]')
+
+  btn.disabled = true
+  btn.textContent = 'Enviando...'
+  if (status) status.textContent = ''
+
+  try {
+    await submitFeedback({
+      email: form.email.value.trim(),
+      message: form.message.value.trim(),
+    })
+    form.reset()
+    if (status) {
+      status.textContent = 'Mensaje enviado, gracias!'
+      status.className = 'text-xs text-open'
+    }
+    setTimeout(() => {
+      const wrapper = document.getElementById('feedback-form-wrapper')
+      if (wrapper) wrapper.classList.add('hidden')
+      if (status) { status.textContent = ''; status.className = 'text-xs text-gray-400' }
+    }, 3000)
+  } catch {
+    if (status) {
+      status.textContent = 'Error al enviar. Intentalo de nuevo.'
+      status.className = 'text-xs text-closed'
+    }
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'Enviar'
+  }
 }
 
 /**

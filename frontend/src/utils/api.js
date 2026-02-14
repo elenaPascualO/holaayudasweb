@@ -91,3 +91,21 @@ export async function getGrantDetailCached(bdnsCode) {
 export async function getCatalog(name) {
   return fetchJson(`${BASE}/catalogo/${encodeURIComponent(name)}`)
 }
+
+/**
+ * Submit user feedback.
+ * @param {Object} data - { email?: string, message: string }
+ * @returns {Promise<Object>} Response
+ */
+export async function submitFeedback(data) {
+  const response = await fetch(`${BASE}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => 'Unknown error')
+    throw new Error(`API error ${response.status}: ${text}`)
+  }
+  return response.json()
+}
