@@ -25,6 +25,9 @@ async def search_grants(
     regiones: str | None = Query(
         default=None, description="Region IDs, comma-separated"
     ),
+    orden: str | None = Query(
+        default=None, description="Sort direction: asc or desc"
+    ),
 ) -> dict:
     """Search grants with filters."""
     params = {
@@ -40,6 +43,8 @@ async def search_grants(
         params["tipoAdministracion"] = tipoAdministracion
     if regiones:
         params["regiones"] = regiones
+    if orden:
+        params["orden"] = orden
 
     try:
         return await search_convocatorias(params)

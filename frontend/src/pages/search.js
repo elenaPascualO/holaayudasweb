@@ -31,6 +31,7 @@ export async function renderSearchPage(params) {
       fechaHasta: params.fechaHasta,
       tipoAdministracion: params.tipoAdministracion,
       regiones: params.regiones,
+      orden: params.orden,
     })
   } catch {
     return `
@@ -56,6 +57,7 @@ export async function renderSearchPage(params) {
   if (params.fechaHasta) baseParams.set('fechaHasta', params.fechaHasta)
   if (params.tipoAdministracion) baseParams.set('tipoAdministracion', params.tipoAdministracion)
   if (params.regiones) baseParams.set('regiones', params.regiones)
+  if (params.orden) baseParams.set('orden', params.orden)
   const baseUrl = `/buscar?${baseParams.toString()}`
 
   return `
@@ -71,10 +73,20 @@ export async function renderSearchPage(params) {
       </aside>
 
       <div class="flex-1 order-1 md:order-2">
-        <p class="text-sm text-gray-400 mb-4">
-          ${formatNumber(results.totalElements)} resultados
-          ${q ? ` para "${q}"` : ''}
-        </p>
+        <div class="flex items-center justify-between mb-4">
+          <p class="text-sm text-gray-400">
+            ${formatNumber(results.totalElements)} resultados
+            ${q ? ` para "${q}"` : ''}
+          </p>
+          <select
+            id="sort-select"
+            class="text-sm text-gray-500 border border-gray-200 rounded-lg px-2 py-1
+                   focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary"
+          >
+            <option value="desc" ${(params.orden || 'desc') === 'desc' ? 'selected' : ''}>Mas recientes</option>
+            <option value="asc" ${params.orden === 'asc' ? 'selected' : ''}>Mas antiguas</option>
+          </select>
+        </div>
 
         ${createGrantList(results.content)}
 

@@ -107,6 +107,10 @@ def _build_search_params(params: dict[str, Any]) -> dict[str, Any]:
     if params.get("regiones"):
         bdns_params["regiones"] = params["regiones"]
 
+    if params.get("orden"):
+        bdns_params["order"] = "fechaRecepcion"
+        bdns_params["direccion"] = params["orden"]
+
     return bdns_params
 
 
