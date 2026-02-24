@@ -113,6 +113,23 @@ export async function getCatalog(name) {
 }
 
 /**
+ * Search top beneficiaries.
+ * @param {Object} params - Search parameters (page, pageSize, order, direccion, anio, nifCif)
+ * @returns {Promise<Object>} Paginated results
+ */
+export async function searchTopBeneficiaries(params = {}) {
+  return fetchJson(`${BASE}/beneficiarios-top${buildQuery(params)}`)
+}
+
+/**
+ * Get available years for top beneficiaries.
+ * @returns {Promise<Array>} List of years
+ */
+export async function getTopBeneficiariesYears() {
+  return fetchJson(`${BASE}/beneficiarios-top/anios`)
+}
+
+/**
  * Submit user feedback.
  * @param {Object} data - { email?: string, message: string }
  * @returns {Promise<Object>} Response

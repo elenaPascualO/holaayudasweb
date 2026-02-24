@@ -268,6 +268,12 @@ async def search_concesiones(params: dict[str, Any]) -> dict[str, Any]:
     if params.get("nifCif"):
         bdns_params["nifCif"] = params["nifCif"]
 
+    if params.get("fechaDesde"):
+        bdns_params["fechaDesde"] = _convert_date_to_bdns(params["fechaDesde"])
+
+    if params.get("fechaHasta"):
+        bdns_params["fechaHasta"] = _convert_date_to_bdns(params["fechaHasta"])
+
     if params.get("page") is not None:
         bdns_params["page"] = params["page"]
 
@@ -306,6 +312,63 @@ async def get_catalog(catalog_name: str) -> Any:
         params["vpd"] = BDNS_VPD
 
     data = await _fetch(f"/{catalog_name}", params=params or None)
+    cache.set(key, data, CACHE_TTL_CATALOGS)
+    return data
+
+
+async def search_top_beneficiaries(params: dict[str, Any]) -> dict[str, Any]:
+    """Search top beneficiaries via /grandesbeneficiarios/busqueda.
+
+    Args:
+        params: Search parameters (page, pageSize, order, direccion, anios, nifCif).
+
+    Returns:
+        Paginated response with content, totalElements, totalPages, etc.
+    """
+    bdns_params: dict[str, Any] = {}
+
+    if params.get("page") is not None:
+        bdns_params["page"] = params["page"]
+
+    if params.get("pageSize"):
+        bdns_params["pageSize"] = params["pageSize"]
+
+    if params.get("order"):
+        bdns_params["order"] = params["order"]
+
+    if params.get("direccion"):
+        bdns_params["direccion"] = params["direccion"]
+
+    if params.get("anios"):
+        bdns_params["anios"] = params["anios"]
+
+    if params.get("nifCif"):
+        bdns_params["nifCif"] = params["nifCif"]
+
+    key = _cache_key("top_beneficiaries", bdns_params)
+
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    data = await _fetch("/grandesbeneficiarios/busqueda", params=bdns_params)
+    cache.set(key, data, CACHE_TTL_DETAIL)
+    return data
+
+
+async def get_top_beneficiaries_years() -> Any:
+    """Get available years for top beneficiaries via /grandesbeneficiarios/anios.
+
+    Returns:
+        List of available years.
+    """
+    key = "top_beneficiaries:years"
+
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    data = await _fetch("/grandesbeneficiarios/anios")
     cache.set(key, data, CACHE_TTL_CATALOGS)
     return data
 

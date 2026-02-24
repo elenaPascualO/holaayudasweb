@@ -43,6 +43,11 @@ export const events = {
   DETAIL_OFFICIAL: 'detail-official',
   CONCESIONES_VIEW: 'concesiones-view',
 
+  // Transparencia
+  TRANSPARENCIA_VIEW: 'transparencia-view',
+  TRANSPARENCIA_FILTER: 'transparencia-filter',
+  TRANSPARENCIA_DRILL_DOWN: 'transparencia-drill-down',
+
   // Feedback
   FEEDBACK_OPEN: 'feedback-open',
   FEEDBACK_SUBMIT: 'feedback-submit',

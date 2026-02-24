@@ -21,15 +21,19 @@ function parseBeneficiaryName(raw) {
 /**
  * Create a concession card.
  * @param {Object} concession - Concession data from BDNS
+ * @param {Object} [options] - Display options
+ * @param {boolean} [options.showConvocatoria] - Show convocatoria name with link to detail
  * @returns {string} HTML
  */
-export function createConcessionCard(concession) {
+export function createConcessionCard(concession, options = {}) {
   const name = parseBeneficiaryName(
     concession.beneficiario || concession.denominacion || ''
   )
   const amount = concession.importeConcedido || concession.importe
   const date = concession.fechaConcesion || concession.fechaResolucion || ''
   const instrument = concession.descripcionInstrumento || ''
+  const convCode = concession.numeroConvocatoria || ''
+  const convTitle = concession.convocatoria || ''
 
   return `
     <div class="flex items-center justify-between gap-3 py-3 border-b border-gray-50 last:border-0">
@@ -37,6 +41,12 @@ export function createConcessionCard(concession) {
         <p class="text-sm font-medium text-gray-900 truncate">
           ${escapeHtml(name)}
         </p>
+        ${options.showConvocatoria && convCode ? `
+          <a href="/ayuda/${encodeURIComponent(convCode)}" data-link
+             class="block text-xs text-primary hover:underline truncate mt-0.5 no-underline">
+            ${escapeHtml(convTitle || `Convocatoria ${convCode}`)}
+          </a>
+        ` : ''}
         <div class="flex items-center gap-2 mt-0.5">
           ${date ? `
             <span class="text-xs text-gray-400">${formatDateShort(date)}</span>
@@ -58,13 +68,14 @@ export function createConcessionCard(concession) {
 /**
  * Create a list of concession cards.
  * @param {Array} concessions - Array of concession objects
+ * @param {Object} [options] - Display options passed to each card
  * @returns {string} HTML
  */
-export function createConcessionList(concessions) {
+export function createConcessionList(concessions, options = {}) {
   if (!concessions || concessions.length === 0) return ''
   return `
     <div class="divide-y divide-gray-50">
-      ${concessions.map(createConcessionCard).join('')}
+      ${concessions.map((c) => createConcessionCard(c, options)).join('')}
     </div>
   `
 }

@@ -15,6 +15,12 @@ async def search_concessions(
     nifCif: str | None = Query(
         default=None, description="Beneficiary NIF/CIF"
     ),
+    fechaDesde: str | None = Query(
+        default=None, description="Start date (YYYY-MM-DD)"
+    ),
+    fechaHasta: str | None = Query(
+        default=None, description="End date (YYYY-MM-DD)"
+    ),
     page: int = Query(default=0, ge=0, description="Page number (0-indexed)"),
     pageSize: int = Query(default=20, ge=1, le=50, description="Results per page"),
 ) -> dict:
@@ -27,6 +33,10 @@ async def search_concessions(
         params["bdnsCode"] = bdnsCode
     if nifCif:
         params["nifCif"] = nifCif
+    if fechaDesde:
+        params["fechaDesde"] = fechaDesde
+    if fechaHasta:
+        params["fechaHasta"] = fechaHasta
 
     try:
         return await search_concesiones(params)

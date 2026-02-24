@@ -11,7 +11,8 @@ import { createLoadingSpinner } from './components/LoadingSpinner.js'
 import { renderHomePage } from './pages/home.js'
 import { renderSearchPage } from './pages/search.js'
 import { renderDetailPage } from './pages/detail.js'
-import { getGrantDetailCached, getConcesionesByGrant, submitFeedback } from './utils/api.js'
+import { renderTransparenciaPage } from './pages/transparencia.js'
+import { getGrantDetailCached, getConcesionesByGrant, searchConcesiones, submitFeedback } from './utils/api.js'
 import { getGrantStatus } from './utils/dates.js'
 import { createStatusBadge } from './components/StatusBadge.js'
 import { formatCurrency } from './utils/formatters.js'
@@ -150,6 +151,17 @@ function setupEventListeners() {
   if (loadConcesionesBtn) {
     loadConcesionesBtn.addEventListener('click', handleLoadConcesiones)
   }
+
+  // Transparencia filter form
+  const transparenciaForm = document.getElementById('transparencia-filters')
+  if (transparenciaForm) {
+    transparenciaForm.addEventListener('submit', handleTransparenciaFilter)
+  }
+
+  // Beneficiary drill-down (expand concesiones)
+  app.querySelectorAll('[data-expand-beneficiary]').forEach((row) => {
+    row.addEventListener('click', handleBeneficiaryDrillDown)
+  })
 
   // Feedback form toggle
   const feedbackToggle = document.getElementById('feedback-toggle')
@@ -484,6 +496,92 @@ async function handleLoadMoreConcesiones(e) {
 }
 
 /**
+ * Handle transparencia filter form submission.
+ */
+function handleTransparenciaFilter(e) {
+  e.preventDefault()
+  const formData = new FormData(e.target)
+  const params = new URLSearchParams()
+
+  const anio = formData.get('anio')
+  if (anio) {
+    params.set('anio', anio)
+  } else {
+    params.set('anio', 'todos')
+  }
+
+  const nifCif = formData.get('nifCif')?.trim()
+  if (nifCif) params.set('nifCif', nifCif)
+
+  track(events.TRANSPARENCIA_FILTER, { anio: anio || '', nifCif: nifCif || '' })
+  navigate(`/transparencia?${params.toString()}`)
+}
+
+/**
+ * Handle beneficiary row click — toggle concesiones drill-down.
+ */
+async function handleBeneficiaryDrillDown(e) {
+  const row = e.currentTarget
+  const nifCif = row.dataset.expandBeneficiary
+  if (!nifCif) return
+
+  const parentRow = row.closest('.beneficiary-row')
+  if (!parentRow) return
+
+  const container = parentRow.querySelector('.concesiones-container')
+  if (!container) return
+
+  const icon = row.querySelector('.expand-icon')
+
+  // Toggle: if already visible, collapse
+  if (!container.classList.contains('hidden')) {
+    container.classList.add('hidden')
+    container.innerHTML = ''
+    if (icon) icon.style.transform = ''
+    return
+  }
+
+  // Expand
+  container.classList.remove('hidden')
+  if (icon) icon.style.transform = 'rotate(180deg)'
+  container.innerHTML = createLoadingSpinner()
+  track(events.TRANSPARENCIA_DRILL_DOWN, { nifCif })
+
+  // Read year filter from the ranking container to scope concesiones
+  const rankingEl = document.getElementById('beneficiarios-ranking')
+  const anio = rankingEl?.dataset.anio || ''
+  const concesionesParams = { nifCif, page: 0, pageSize: 20 }
+  if (anio) {
+    concesionesParams.fechaDesde = `${anio}-01-01`
+    concesionesParams.fechaHasta = `${anio}-12-31`
+  }
+
+  try {
+    const data = await searchConcesiones(concesionesParams)
+    const items = data.content || []
+
+    if (items.length === 0) {
+      container.innerHTML = `
+        <p class="text-sm text-gray-400 py-2">No se encontraron concesiones individuales para este beneficiario.</p>
+      `
+      return
+    }
+
+    // Sort by amount descending
+    items.sort((a, b) => (b.importe || 0) - (a.importe || 0))
+
+    const total = data.totalElements || items.length
+    let html = `<p class="text-xs text-gray-400 mb-2">${total} concesion${total !== 1 ? 'es' : ''}</p>`
+    html += createConcessionList(items, { showConvocatoria: true })
+    container.innerHTML = html
+  } catch {
+    container.innerHTML = `
+      <p class="text-sm text-gray-400 py-2">Error al cargar concesiones.</p>
+    `
+  }
+}
+
+/**
  * Handle clear filters button.
  */
 function handleClearFilters() {
@@ -551,6 +649,13 @@ registerRoute('/buscar', async (params) => {
   const html = await renderSearchPage(params)
   render(html)
   enrichVisibleCards()
+})
+
+registerRoute('/transparencia', async (params) => {
+  renderLoading()
+  const html = await renderTransparenciaPage(params)
+  render(html)
+  track(events.TRANSPARENCIA_VIEW, { anio: params.anio || '' })
 })
 
 registerRoute('/ayuda/:bdnsCode', async (params) => {

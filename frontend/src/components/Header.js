@@ -12,9 +12,12 @@ export function createHeader() {
           </div>
           <span class="text-xl font-bold text-gray-900">Hola Ayudas</span>
         </a>
-        <span class="text-xs text-gray-400 hidden sm:block">
-          Busca ayudas y subvenciones publicas
-        </span>
+        <nav class="flex items-center gap-4">
+          <a href="/transparencia" data-link
+             class="text-sm text-gray-500 hover:text-primary transition-colors no-underline">
+            Transparencia
+          </a>
+        </nav>
       </div>
     </header>
   `
