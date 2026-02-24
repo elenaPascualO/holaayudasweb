@@ -27,6 +27,9 @@ RUN uv pip install --system --no-cache .
 # Copy built frontend from first stage
 COPY --from=frontend-builder /app/frontend/dist frontend/dist
 
+# Create data directory for SQLite databases
+RUN mkdir -p /app/data
+
 EXPOSE 8000
 
 # Use shell form to expand $PORT environment variable (Railway sets this)

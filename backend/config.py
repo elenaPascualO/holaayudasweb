@@ -53,5 +53,11 @@ def get_cors_origins() -> list[str]:
 
 CORS_ORIGINS: list[str] = get_cors_origins()
 
+# SQLite database for beneficiarios text search
+BENEFICIARIOS_DB_PATH: str = os.getenv(
+    "BENEFICIARIOS_DB_PATH",
+    str(Path(__file__).parent.parent / "data" / "beneficiarios.db"),
+)
+
 # Discord webhook for feedback notifications
 DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL", "")

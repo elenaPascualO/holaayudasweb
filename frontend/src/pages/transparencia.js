@@ -10,7 +10,7 @@ import { formatNumber } from '../utils/formatters.js'
 
 /**
  * Render the transparencia page.
- * @param {Object} params - Query parameters (anio, nifCif, page)
+ * @param {Object} params - Query parameters (anio, nifCif, q, page)
  * @returns {Promise<string>} HTML
  */
 export async function renderTransparenciaPage(params) {
@@ -35,18 +35,20 @@ export async function renderTransparenciaPage(params) {
     : params.anio ? parseInt(params.anio, 10)
     : (years[0] || null)
   const nifCif = params.nifCif || ''
+  const q = params.q || ''
 
   // Build search params
   const searchParams = { page, pageSize }
   if (anio) searchParams.anio = anio
   if (nifCif) searchParams.nifCif = nifCif
+  if (q) searchParams.q = q
 
   let results
   try {
     results = await searchTopBeneficiaries(searchParams)
   } catch {
     return `
-      ${createPageHeader(years, anio, nifCif)}
+      ${createPageHeader(years, anio, nifCif, q)}
       ${createEmptyState(
         'Error al cargar',
         'No se pudo conectar con el servidor. Intentalo de nuevo.'
@@ -55,14 +57,14 @@ export async function renderTransparenciaPage(params) {
   }
 
   if (!results.content || results.content.length === 0) {
+    const emptyMsg = q
+      ? `No se encontraron grandes beneficiarios con el nombre "${escapeAttr(q)}".`
+      : nifCif
+        ? `No se encontraron grandes beneficiarios con NIF/CIF "${nifCif}".`
+        : 'No hay datos de grandes beneficiarios para el periodo seleccionado.'
     return `
-      ${createPageHeader(years, anio, nifCif)}
-      ${createEmptyState(
-        'Sin resultados',
-        nifCif
-          ? `No se encontraron grandes beneficiarios con NIF/CIF "${nifCif}".`
-          : 'No hay datos de grandes beneficiarios para el periodo seleccionado.'
-      )}
+      ${createPageHeader(years, anio, nifCif, q)}
+      ${createEmptyState('Sin resultados', emptyMsg)}
     `
   }
 
@@ -77,12 +79,13 @@ export async function renderTransparenciaPage(params) {
   const baseParams = new URLSearchParams()
   if (anio) baseParams.set('anio', anio)
   if (nifCif) baseParams.set('nifCif', nifCif)
+  if (q) baseParams.set('q', q)
   const maxForUrl = page === 0 ? pageMax : globalMax
   baseParams.set('maxImporte', maxForUrl)
   const baseUrl = `/transparencia?${baseParams.toString()}`
 
   return `
-    ${createPageHeader(years, anio, nifCif)}
+    ${createPageHeader(years, anio, nifCif, q)}
 
     <p class="text-sm text-gray-400 mb-4">
       ${formatNumber(results.totalElements)} grandes beneficiarios${anio ? ` en ${anio}` : ''}
@@ -106,9 +109,10 @@ export async function renderTransparenciaPage(params) {
  * @param {Array} years - Available years
  * @param {number|null} selectedYear - Currently selected year
  * @param {string} nifCif - Current NIF/CIF filter
+ * @param {string} searchQuery - Current text search query
  * @returns {string} HTML
  */
-function createPageHeader(years, selectedYear, nifCif) {
+function createPageHeader(years, selectedYear, nifCif, searchQuery = '') {
   return `
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-gray-900 mb-1">Transparencia</h1>
@@ -125,6 +129,19 @@ function createPageHeader(years, selectedYear, nifCif) {
     </div>
 
     <form id="transparencia-filters" class="flex flex-wrap items-end gap-3 mb-6">
+      <div>
+        <label for="nombre-input" class="block text-xs font-medium text-gray-500 mb-1">Buscar por nombre</label>
+        <input
+          type="text"
+          id="nombre-input"
+          name="q"
+          value="${escapeAttr(searchQuery)}"
+          placeholder="Ej: Iberdrola, Telefonica..."
+          class="text-sm border border-gray-200 rounded-lg px-3 py-2 w-52
+                 focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary"
+        />
+      </div>
+
       <div>
         <label for="anio-select" class="block text-xs font-medium text-gray-500 mb-1">Año</label>
         <select

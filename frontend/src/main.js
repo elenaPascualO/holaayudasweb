@@ -503,6 +503,9 @@ function handleTransparenciaFilter(e) {
   const formData = new FormData(e.target)
   const params = new URLSearchParams()
 
+  const q = formData.get('q')?.trim()
+  if (q) params.set('q', q)
+
   const anio = formData.get('anio')
   if (anio) {
     params.set('anio', anio)
@@ -513,7 +516,7 @@ function handleTransparenciaFilter(e) {
   const nifCif = formData.get('nifCif')?.trim()
   if (nifCif) params.set('nifCif', nifCif)
 
-  track(events.TRANSPARENCIA_FILTER, { anio: anio || '', nifCif: nifCif || '' })
+  track(events.TRANSPARENCIA_FILTER, { anio: anio || '', nifCif: nifCif || '', q: q || '' })
   navigate(`/transparencia?${params.toString()}`)
 }
 

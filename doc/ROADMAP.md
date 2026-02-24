@@ -113,9 +113,15 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 
 **Objetivo:** Añadir funcionalidades de interes publico y trafico organico.
 
+**Estado:** En progreso (Febrero 2026)
+
 ### Transparencia
-- [ ] Vista de grandes beneficiarios (`/grandesbeneficiarios`)
-- [ ] Ranking visual (grafico de barras)
+- [x] Vista de grandes beneficiarios (`/transparencia`)
+- [x] Ranking visual (grafico de barras proporcionales)
+- [x] Filtro por año y NIF/CIF
+- [x] Drill-down a concesiones individuales por beneficiario
+- [x] Busqueda por nombre de beneficiario (SQLite FTS5 local)
+- [x] Script de sincronizacion diaria de ~130K registros de BDNS
 - [ ] Seccion de subvenciones a partidos politicos
 - [ ] Comparativa año a año
 

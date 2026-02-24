@@ -197,7 +197,7 @@ El backend actua como proxy transparente con cache. Transforma las respuestas de
 | `GET /api/convocatorias/ultimas` | `/convocatorias/ultimas` | 5 min |
 | `GET /api/convocatorias/:id` | `/convocatorias?numConv=X` | 1 hora |
 | `GET /api/concesiones` | `/concesiones/busqueda` | 5 min |
-| `GET /api/beneficiarios-top` | `/grandesbeneficiarios/busqueda` | 1 hora |
+| `GET /api/beneficiarios-top` | `/grandesbeneficiarios/busqueda` o SQLite FTS5 (si `q` presente) | 1 hora |
 | `GET /api/catalogo/regiones` | `/regiones` | 24 horas |
 | `GET /api/catalogo/finalidades` | `/finalidades?vpd=GE` | 24 horas |
 | `GET /api/catalogo/instrumentos` | `/instrumentos` | 24 horas |

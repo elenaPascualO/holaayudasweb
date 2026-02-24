@@ -7,6 +7,10 @@ from backend.services.bdns_client import (
     get_top_beneficiaries_years,
     search_top_beneficiaries,
 )
+from backend.services.beneficiarios_db import (
+    has_data,
+    search_beneficiarios_async,
+)
 
 router = APIRouter(prefix="/api", tags=["beneficiarios"])
 
@@ -19,8 +23,27 @@ async def get_top_beneficiaries(
     direccion: str = Query(default="desc", description="Sort direction (asc/desc)"),
     anio: int | None = Query(default=None, description="Year filter"),
     nifCif: str | None = Query(default=None, description="Beneficiary NIF/CIF"),
+    q: str | None = Query(default=None, description="Text search (name)"),
 ) -> dict:
-    """Search top beneficiaries with filters."""
+    """Search top beneficiaries with filters.
+
+    When `q` is provided, searches the local SQLite FTS5 index.
+    Otherwise, proxies to the BDNS API directly.
+    """
+    if q and q.strip():
+        if not has_data():
+            raise HTTPException(
+                status_code=503,
+                detail="La base de datos de beneficiarios aun no ha sido sincronizada. Intentalo mas tarde.",
+            )
+        return await search_beneficiarios_async(
+            q=q.strip(),
+            anio=anio,
+            page=page,
+            page_size=pageSize,
+        )
+
+    # No text search → proxy to BDNS
     params: dict = {
         "page": page,
         "pageSize": pageSize,
