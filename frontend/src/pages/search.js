@@ -43,10 +43,19 @@ export async function renderSearchPage(params) {
     return `
       ${createSearchBar(q)}
       ${createQuickFilters()}
-      ${createEmptyState(
-        'Error al buscar',
-        'No se pudo conectar con el servidor. Intentalo de nuevo.'
-      )}
+
+      <div class="mt-6 flex flex-col md:flex-row gap-6">
+        <aside class="md:w-60 shrink-0 order-2 md:order-1">
+          ${createFilterPanel({ ...params, fechaDesde }, { communities: COMMUNITIES, provinces: PROVINCES })}
+        </aside>
+
+        <div class="flex-1 order-1 md:order-2">
+          ${createEmptyState(
+            'Error al buscar',
+            'No se pudo conectar con el servidor. Intentalo de nuevo.'
+          )}
+        </div>
+      </div>
     `
   }
 
@@ -54,7 +63,16 @@ export async function renderSearchPage(params) {
     return `
       ${createSearchBar(q)}
       ${createQuickFilters()}
-      ${createEmptyState()}
+
+      <div class="mt-6 flex flex-col md:flex-row gap-6">
+        <aside class="md:w-60 shrink-0 order-2 md:order-1">
+          ${createFilterPanel({ ...params, fechaDesde }, { communities: COMMUNITIES, provinces: PROVINCES })}
+        </aside>
+
+        <div class="flex-1 order-1 md:order-2">
+          ${createEmptyState()}
+        </div>
+      </div>
     `
   }
 
