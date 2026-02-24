@@ -12,6 +12,7 @@ import { renderHomePage } from './pages/home.js'
 import { renderSearchPage } from './pages/search.js'
 import { renderDetailPage } from './pages/detail.js'
 import { renderTransparenciaPage } from './pages/transparencia.js'
+import { renderConcesionesPage } from './pages/concesiones.js'
 import { getGrantDetailCached, getConcesionesByGrant, searchConcesiones, submitFeedback } from './utils/api.js'
 import { getGrantStatus } from './utils/dates.js'
 import { createStatusBadge } from './components/StatusBadge.js'
@@ -553,7 +554,7 @@ async function handleBeneficiaryDrillDown(e) {
   // Read year filter from the ranking container to scope concesiones
   const rankingEl = document.getElementById('beneficiarios-ranking')
   const anio = rankingEl?.dataset.anio || ''
-  const concesionesParams = { nifCif, page: 0, pageSize: 20 }
+  const concesionesParams = { nifCif, page: 0, pageSize: 5 }
   if (anio) {
     concesionesParams.fechaDesde = `${anio}-01-01`
     concesionesParams.fechaHasta = `${anio}-12-31`
@@ -576,6 +577,22 @@ async function handleBeneficiaryDrillDown(e) {
     const total = data.totalElements || items.length
     let html = `<p class="text-xs text-gray-400 mb-2">${total} concesion${total !== 1 ? 'es' : ''}</p>`
     html += createConcessionList(items, { showConvocatoria: true })
+
+    // "Ver todas" link when there are more than 5
+    if (total > 5) {
+      const linkParams = new URLSearchParams({ nifCif })
+      if (anio) linkParams.set('anio', anio)
+      html += `
+        <a href="/concesiones?${linkParams.toString()}" data-link
+           class="inline-flex items-center gap-1 mt-3 text-sm font-medium text-primary hover:underline no-underline">
+          Ver todas las ${total} concesiones
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </a>
+      `
+    }
+
     container.innerHTML = html
   } catch {
     container.innerHTML = `
@@ -659,6 +676,13 @@ registerRoute('/transparencia', async (params) => {
   const html = await renderTransparenciaPage(params)
   render(html)
   track(events.TRANSPARENCIA_VIEW, { anio: params.anio || '' })
+})
+
+registerRoute('/concesiones', async (params) => {
+  renderLoading()
+  const html = await renderConcesionesPage(params)
+  render(html)
+  track(events.CONCESIONES_VIEW, { nifCif: params.nifCif || '' })
 })
 
 registerRoute('/ayuda/:bdnsCode', async (params) => {

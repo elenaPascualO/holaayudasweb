@@ -102,8 +102,8 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 - [x] Mensaje informativo cuando no hay concesiones registradas
 
 ### Pendiente para futuras fases
-- [ ] Pagina standalone de busqueda de concesiones (`/concesiones`)
-- [ ] Busqueda por NIF/CIF del beneficiario
+- [x] Pagina standalone de concesiones por beneficiario (`/concesiones`)
+- [x] Busqueda por NIF/CIF del beneficiario
 - [ ] Descarga de documentos de convocatoria (PDF passthrough)
 - [ ] Paginacion mejorada (scroll infinito o paginacion numerada)
 
@@ -119,7 +119,8 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 - [x] Vista de grandes beneficiarios (`/transparencia`)
 - [x] Ranking visual (grafico de barras proporcionales)
 - [x] Filtro por año y NIF/CIF
-- [x] Drill-down a concesiones individuales por beneficiario
+- [x] Drill-down a concesiones individuales por beneficiario (preview top 5)
+- [x] Pagina dedicada de concesiones por beneficiario (`/concesiones?nifCif=X&anio=Y`) con paginacion
 - [x] Busqueda por nombre de beneficiario (SQLite FTS5 local)
 - [x] Script de sincronizacion diaria de ~130K registros de BDNS
 - [ ] Seccion de subvenciones a partidos politicos
