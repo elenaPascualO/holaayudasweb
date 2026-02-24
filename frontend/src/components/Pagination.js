@@ -19,8 +19,9 @@ export function createPagination(currentPage, totalPages, totalElements, baseUrl
   const nextDisabled = currentPage >= totalPages - 1
 
   // Build URLs preserving existing query params
-  const prevUrl = prevDisabled ? '#' : `${baseUrl}&page=${currentPage - 1}`
-  const nextUrl = nextDisabled ? '#' : `${baseUrl}&page=${currentPage + 1}`
+  const sep = baseUrl.includes('?') ? '&' : '?'
+  const prevUrl = prevDisabled ? '#' : `${baseUrl}${sep}page=${currentPage - 1}`
+  const nextUrl = nextDisabled ? '#' : `${baseUrl}${sep}page=${currentPage + 1}`
 
   return `
     <nav class="flex items-center justify-between mt-6 pt-4 border-t border-gray-100" aria-label="Paginacion">

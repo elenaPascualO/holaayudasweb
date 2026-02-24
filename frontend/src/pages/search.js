@@ -4,7 +4,7 @@
 
 import { searchGrants } from '../utils/api.js'
 import { COMMUNITIES, PROVINCES } from '../utils/regionCache.js'
-import { createSearchBar } from '../components/SearchBar.js'
+import { createSearchBar, createQuickFilters } from '../components/SearchBar.js'
 import { createGrantList } from '../components/GrantList.js'
 import { createFilterPanel } from '../components/FilterPanel.js'
 import { createPagination } from '../components/Pagination.js'
@@ -42,6 +42,7 @@ export async function renderSearchPage(params) {
   } catch {
     return `
       ${createSearchBar(q)}
+      ${createQuickFilters()}
       ${createEmptyState(
         'Error al buscar',
         'No se pudo conectar con el servidor. Intentalo de nuevo.'
@@ -52,6 +53,7 @@ export async function renderSearchPage(params) {
   if (!results.content || results.content.length === 0) {
     return `
       ${createSearchBar(q)}
+      ${createQuickFilters()}
       ${createEmptyState()}
     `
   }
@@ -68,11 +70,8 @@ export async function renderSearchPage(params) {
   const baseUrl = `/buscar?${baseParams.toString()}`
 
   return `
-    <a href="/" data-link class="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-700 transition-colors mb-4">
-      <span>&#8592;</span> Inicio
-    </a>
-
     ${createSearchBar(q)}
+    ${createQuickFilters()}
 
     <div class="mt-6 flex flex-col md:flex-row gap-6">
       <aside class="md:w-60 shrink-0 order-2 md:order-1">

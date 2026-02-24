@@ -418,9 +418,9 @@ function enrichVisibleCards() {
 
 // --- Register routes ---
 
-registerRoute('/', async () => {
+registerRoute('/', async (params) => {
   renderLoading()
-  const html = await renderHomePage()
+  const html = await renderHomePage(params)
   render(html)
   enrichVisibleCards()
 })

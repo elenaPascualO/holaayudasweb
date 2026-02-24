@@ -1,48 +1,71 @@
 /**
- * Homepage: search hero + latest grants feed.
+ * Homepage: latest grants with filters and pagination.
  */
 
 import { getLatestGrants } from '../utils/api.js'
+import { COMMUNITIES, PROVINCES } from '../utils/regionCache.js'
 import { createSearchBar, createQuickFilters } from '../components/SearchBar.js'
 import { createGrantList } from '../components/GrantList.js'
+import { createFilterPanel } from '../components/FilterPanel.js'
+import { createPagination } from '../components/Pagination.js'
+import { createEmptyState } from '../components/EmptyState.js'
 import { formatNumber } from '../utils/formatters.js'
 
 /**
  * Render the homepage.
+ * @param {Object} params - Query parameters (page)
  * @returns {Promise<string>} HTML
  */
-export async function renderHomePage() {
-  let latestHtml = ''
+export async function renderHomePage(params = {}) {
+  const page = parseInt(params.page || '0', 10)
 
+  let results
   try {
-    const latest = await getLatestGrants(0, 10)
-    latestHtml = createGrantList(latest.content)
+    results = await getLatestGrants(page, 20)
   } catch {
-    latestHtml = `
-      <div class="text-center py-8">
-        <p class="text-gray-400 text-sm">No se pudieron cargar las ultimas ayudas</p>
-      </div>
+    return `
+      ${createSearchBar()}
+      ${createQuickFilters()}
+      ${createEmptyState(
+        'Error al cargar',
+        'No se pudieron cargar las ultimas ayudas. Intentalo de nuevo.'
+      )}
+    `
+  }
+
+  if (!results.content || results.content.length === 0) {
+    return `
+      ${createSearchBar()}
+      ${createQuickFilters()}
+      ${createEmptyState()}
     `
   }
 
   return `
-    <section class="py-10 text-center">
-      <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
-        Encuentra tu ayuda
-      </h1>
-      <p class="text-gray-500 mb-8 max-w-lg mx-auto">
-        Busca entre mas de ${formatNumber(600000)} ayudas y subvenciones publicas
-        de forma facil y rapida
-      </p>
-      ${createSearchBar()}
-      ${createQuickFilters()}
-    </section>
+    ${createSearchBar()}
+    ${createQuickFilters()}
 
-    <section class="mt-10">
-      <h2 class="text-lg font-semibold text-gray-700 mb-4">
-        Ultimas ayudas publicadas
-      </h2>
-      ${latestHtml}
-    </section>
+    <div class="mt-6 flex flex-col md:flex-row gap-6">
+      <aside class="md:w-60 shrink-0 order-2 md:order-1">
+        ${createFilterPanel({}, { communities: COMMUNITIES, provinces: PROVINCES })}
+      </aside>
+
+      <div class="flex-1 order-1 md:order-2">
+        <div class="flex items-center justify-between mb-4">
+          <p class="text-sm text-gray-400">
+            ${formatNumber(results.totalElements)} ayudas publicadas
+          </p>
+        </div>
+
+        ${createGrantList(results.content)}
+
+        ${createPagination(
+          results.number,
+          results.totalPages,
+          results.totalElements,
+          '/',
+        )}
+      </div>
+    </div>
   `
 }
