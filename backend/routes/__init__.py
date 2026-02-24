@@ -1,3 +1,4 @@
+from .admin import router as admin_router
 from .beneficiarios import router as beneficiarios_router
 from .convocatorias import router as convocatorias_router
 from .catalogs import router as catalogs_router

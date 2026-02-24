@@ -10,13 +10,13 @@ from fastapi.staticfiles import StaticFiles
 try:
     # Production: running from root with 'backend.main:app'
     from backend.config import CORS_ORIGINS
-    from backend.routes import beneficiarios_router, catalogs_router, concesiones_router, convocatorias_router, feedback_router
+    from backend.routes import admin_router, beneficiarios_router, catalogs_router, concesiones_router, convocatorias_router, feedback_router
     from backend.services.bdns_client import close_client
     from backend.services.beneficiarios_db import init_db
 except ImportError:
     # Development: running from backend/ with 'main:app'
     from config import CORS_ORIGINS
-    from routes import beneficiarios_router, catalogs_router, concesiones_router, convocatorias_router, feedback_router
+    from routes import admin_router, beneficiarios_router, catalogs_router, concesiones_router, convocatorias_router, feedback_router
     from services.bdns_client import close_client
     from services.beneficiarios_db import init_db
 
@@ -53,6 +53,7 @@ app.include_router(catalogs_router)
 app.include_router(concesiones_router)
 app.include_router(beneficiarios_router)
 app.include_router(feedback_router)
+app.include_router(admin_router)
 
 
 @app.get("/api/health")

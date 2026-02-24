@@ -61,3 +61,6 @@ BENEFICIARIOS_DB_PATH: str = os.getenv(
 
 # Discord webhook for feedback notifications
 DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL", "")
+
+# Secret token for admin endpoints (sync cron, etc.)
+ADMIN_SECRET: str = os.getenv("ADMIN_SECRET", "")
