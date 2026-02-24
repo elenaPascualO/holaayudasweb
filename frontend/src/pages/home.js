@@ -4,6 +4,7 @@
 
 import { getLatestGrants } from '../utils/api.js'
 import { COMMUNITIES, PROVINCES } from '../utils/regionCache.js'
+import { getCatalogs } from '../utils/catalogCache.js'
 import { createSearchBar, createQuickFilters } from '../components/SearchBar.js'
 import { createGrantList } from '../components/GrantList.js'
 import { createFilterPanel } from '../components/FilterPanel.js'
@@ -18,6 +19,8 @@ import { formatNumber } from '../utils/formatters.js'
  */
 export async function renderHomePage(params = {}) {
   const page = parseInt(params.page || '0', 10)
+
+  const catalogs = await getCatalogs()
 
   let results
   try {
@@ -47,7 +50,7 @@ export async function renderHomePage(params = {}) {
 
     <div class="mt-6 flex flex-col md:flex-row gap-6">
       <aside class="md:w-60 shrink-0 order-2 md:order-1">
-        ${createFilterPanel({}, { communities: COMMUNITIES, provinces: PROVINCES })}
+        ${createFilterPanel({}, { communities: COMMUNITIES, provinces: PROVINCES }, catalogs)}
       </aside>
 
       <div class="flex-1 order-1 md:order-2">

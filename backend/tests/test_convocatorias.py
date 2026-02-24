@@ -85,6 +85,26 @@ async def test_grant_detail(mock_detail, client):
     mock_detail.assert_called_once_with("886707")
 
 
+@patch("backend.routes.convocatorias.search_convocatorias", new_callable=AsyncMock)
+async def test_search_grants_advanced_filters(mock_search, client):
+    """Search endpoint forwards advanced filter params."""
+    mock_search.return_value = {
+        "content": [],
+        "totalElements": 0,
+        "totalPages": 0,
+        "number": 0,
+        "size": 20,
+    }
+    response = await client.get(
+        "/api/convocatorias?q=test&instrumentos=1,2&tiposBeneficiario=3&finalidad=5"
+    )
+    assert response.status_code == 200
+    call_params = mock_search.call_args[0][0]
+    assert call_params["instrumentos"] == "1,2"
+    assert call_params["tiposBeneficiario"] == "3"
+    assert call_params["finalidad"] == 5
+
+
 @patch("backend.routes.convocatorias.get_convocatoria_detail", new_callable=AsyncMock)
 async def test_grant_detail_not_found(mock_detail, client):
     """Detail endpoint returns 404 when grant not found."""

@@ -4,6 +4,7 @@
 
 import { searchGrants } from '../utils/api.js'
 import { COMMUNITIES, PROVINCES } from '../utils/regionCache.js'
+import { getCatalogs } from '../utils/catalogCache.js'
 import { createSearchBar, createQuickFilters } from '../components/SearchBar.js'
 import { createGrantList } from '../components/GrantList.js'
 import { createFilterPanel } from '../components/FilterPanel.js'
@@ -26,6 +27,8 @@ export async function renderSearchPage(params) {
   const defaultFechaDesde = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
   const fechaDesde = params.fechaDesde ?? defaultFechaDesde
 
+  const catalogs = await getCatalogs()
+
   let results
   try {
     results = await searchGrants({
@@ -38,6 +41,9 @@ export async function renderSearchPage(params) {
       regiones: params.regiones,
       orden: params.orden,
       estado: params.estado,
+      instrumentos: params.instrumentos,
+      tiposBeneficiario: params.tiposBeneficiario,
+      finalidad: params.finalidad,
     })
   } catch {
     return `
@@ -46,7 +52,7 @@ export async function renderSearchPage(params) {
 
       <div class="mt-6 flex flex-col md:flex-row gap-6">
         <aside class="md:w-60 shrink-0 order-2 md:order-1">
-          ${createFilterPanel({ ...params, fechaDesde }, { communities: COMMUNITIES, provinces: PROVINCES })}
+          ${createFilterPanel({ ...params, fechaDesde }, { communities: COMMUNITIES, provinces: PROVINCES }, catalogs)}
         </aside>
 
         <div class="flex-1 order-1 md:order-2">
@@ -66,7 +72,7 @@ export async function renderSearchPage(params) {
 
       <div class="mt-6 flex flex-col md:flex-row gap-6">
         <aside class="md:w-60 shrink-0 order-2 md:order-1">
-          ${createFilterPanel({ ...params, fechaDesde }, { communities: COMMUNITIES, provinces: PROVINCES })}
+          ${createFilterPanel({ ...params, fechaDesde }, { communities: COMMUNITIES, provinces: PROVINCES }, catalogs)}
         </aside>
 
         <div class="flex-1 order-1 md:order-2">
@@ -85,6 +91,9 @@ export async function renderSearchPage(params) {
   if (params.regiones) baseParams.set('regiones', params.regiones)
   if (params.orden) baseParams.set('orden', params.orden)
   if (params.estado) baseParams.set('estado', params.estado)
+  if (params.instrumentos) baseParams.set('instrumentos', params.instrumentos)
+  if (params.tiposBeneficiario) baseParams.set('tiposBeneficiario', params.tiposBeneficiario)
+  if (params.finalidad) baseParams.set('finalidad', params.finalidad)
   const baseUrl = `/buscar?${baseParams.toString()}`
 
   return `
@@ -93,7 +102,7 @@ export async function renderSearchPage(params) {
 
     <div class="mt-6 flex flex-col md:flex-row gap-6">
       <aside class="md:w-60 shrink-0 order-2 md:order-1">
-        ${createFilterPanel({ ...params, fechaDesde }, { communities: COMMUNITIES, provinces: PROVINCES })}
+        ${createFilterPanel({ ...params, fechaDesde }, { communities: COMMUNITIES, provinces: PROVINCES }, catalogs)}
       </aside>
 
       <div class="flex-1 order-1 md:order-2">

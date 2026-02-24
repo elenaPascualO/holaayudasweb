@@ -63,6 +63,7 @@ export function createGrantDetail(grant) {
       ${createRegionsSection(grant)}
       ${createDocumentsSection(grant)}
       ${createBasesSection(grant)}
+      ${createConcesionesSection(grant)}
       ${createOfficialSourceSection(grant)}
     </div>
   `
@@ -302,6 +303,31 @@ function createBasesSection(grant) {
           </svg>
         </a>
       ` : ''}
+    </div>
+  `
+}
+
+function createConcesionesSection(grant) {
+  if (!grant.codigoBDNS) return ''
+  return `
+    <div class="bg-white rounded-xl border border-gray-100 p-6 mb-4">
+      <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">
+        ¿Quien recibio esta ayuda?
+      </h2>
+      <div id="concesiones-container">
+        <button
+          id="load-concesiones"
+          data-bdns-code="${escapeHtml(grant.codigoBDNS)}"
+          class="inline-flex items-center gap-2 px-4 py-2 border border-primary text-primary font-medium
+                 rounded-lg hover:bg-primary hover:text-white transition-colors text-sm cursor-pointer"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          Ver beneficiarios
+        </button>
+      </div>
     </div>
   `
 }

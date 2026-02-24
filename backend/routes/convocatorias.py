@@ -32,6 +32,15 @@ async def search_grants(
     estado: str | None = Query(
         default=None, description="Status filter: abiertas or cerradas"
     ),
+    tiposBeneficiario: str | None = Query(
+        default=None, description="Beneficiary type IDs, comma-separated"
+    ),
+    instrumentos: str | None = Query(
+        default=None, description="Instrument type IDs, comma-separated"
+    ),
+    finalidad: int | None = Query(
+        default=None, description="Purpose/theme ID"
+    ),
 ) -> dict:
     """Search grants with filters."""
     params = {
@@ -49,6 +58,12 @@ async def search_grants(
         params["regiones"] = regiones
     if orden:
         params["orden"] = orden
+    if tiposBeneficiario:
+        params["tiposBeneficiario"] = tiposBeneficiario
+    if instrumentos:
+        params["instrumentos"] = instrumentos
+    if finalidad is not None:
+        params["finalidad"] = finalidad
 
     try:
         if estado in ("abiertas", "cerradas"):

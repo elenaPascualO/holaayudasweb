@@ -41,6 +41,7 @@ export const events = {
   DETAIL_DOCUMENT: 'detail-document',
   DETAIL_BASES: 'detail-bases',
   DETAIL_OFFICIAL: 'detail-official',
+  CONCESIONES_VIEW: 'concesiones-view',
 
   // Feedback
   FEEDBACK_OPEN: 'feedback-open',

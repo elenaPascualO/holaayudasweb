@@ -11,10 +11,11 @@ import { createLoadingSpinner } from './components/LoadingSpinner.js'
 import { renderHomePage } from './pages/home.js'
 import { renderSearchPage } from './pages/search.js'
 import { renderDetailPage } from './pages/detail.js'
-import { getGrantDetailCached, submitFeedback } from './utils/api.js'
+import { getGrantDetailCached, getConcesionesByGrant, submitFeedback } from './utils/api.js'
 import { getGrantStatus } from './utils/dates.js'
 import { createStatusBadge } from './components/StatusBadge.js'
 import { formatCurrency } from './utils/formatters.js'
+import { createConcessionList } from './components/ConcessionCard.js'
 import { track, events } from './utils/tracking.js'
 
 const app = document.querySelector('#app')
@@ -142,6 +143,12 @@ function setupEventListeners() {
   const sortSelect = document.getElementById('sort-select')
   if (sortSelect) {
     sortSelect.addEventListener('change', handleSortChange)
+  }
+
+  // Load concesiones button
+  const loadConcesionesBtn = document.getElementById('load-concesiones')
+  if (loadConcesionesBtn) {
+    loadConcesionesBtn.addEventListener('click', handleLoadConcesiones)
   }
 
   // Feedback form toggle
@@ -283,6 +290,16 @@ function handleFilterSubmit(e) {
   if (tipo === 'L') regiones = document.getElementById('region-provinces')?.value || ''
   if (regiones) params.set('regiones', regiones)
 
+  // Advanced catalog filters
+  const instrumentos = formData.get('instrumentos')
+  if (instrumentos) params.set('instrumentos', instrumentos)
+
+  const tiposBeneficiario = formData.get('tiposBeneficiario')
+  if (tiposBeneficiario) params.set('tiposBeneficiario', tiposBeneficiario)
+
+  const finalidad = formData.get('finalidad')
+  if (finalidad) params.set('finalidad', finalidad)
+
   // Preserve sort order
   const currentParams = new URLSearchParams(window.location.search)
   const orden = currentParams.get('orden')
@@ -359,6 +376,107 @@ async function handleFeedbackSubmit(e) {
   } finally {
     btn.disabled = false
     btn.textContent = 'Enviar'
+  }
+}
+
+/**
+ * Handle "Ver beneficiarios" button click — load concesiones for a grant.
+ */
+async function handleLoadConcesiones(e) {
+  const btn = e.currentTarget
+  const bdnsCode = btn.dataset.bdnsCode
+  if (!bdnsCode) return
+
+  const container = document.getElementById('concesiones-container')
+  if (!container) return
+
+  btn.disabled = true
+  btn.textContent = 'Cargando...'
+  track(events.CONCESIONES_VIEW, { bdns: bdnsCode })
+
+  try {
+    const data = await getConcesionesByGrant(bdnsCode, 0, 20)
+    const items = data.content || []
+
+    if (items.length === 0) {
+      container.innerHTML = `
+        <p class="text-sm text-gray-400">No hay concesiones registradas para esta convocatoria.</p>
+      `
+      return
+    }
+
+    let html = createConcessionList(items)
+
+    // Show total count
+    const total = data.totalElements || items.length
+    html = `
+      <p class="text-xs text-gray-400 mb-2">${total} beneficiario${total !== 1 ? 's' : ''} registrado${total !== 1 ? 's' : ''}</p>
+      ${html}
+    `
+
+    // Load more button if there are more pages
+    if (data.totalPages > 1) {
+      html += `
+        <button
+          id="load-more-concesiones"
+          data-bdns-code="${bdnsCode}"
+          data-next-page="1"
+          data-total-pages="${data.totalPages}"
+          class="mt-3 w-full py-2 text-sm font-medium text-primary border border-primary/30
+                 rounded-lg hover:bg-primary/5 transition-colors cursor-pointer"
+        >
+          Ver mas beneficiarios
+        </button>
+      `
+    }
+
+    container.innerHTML = html
+
+    // Wire up "load more" if present
+    const loadMoreBtn = document.getElementById('load-more-concesiones')
+    if (loadMoreBtn) {
+      loadMoreBtn.addEventListener('click', handleLoadMoreConcesiones)
+    }
+  } catch {
+    container.innerHTML = `
+      <p class="text-sm text-gray-400">Error al cargar las concesiones. Intentalo de nuevo.</p>
+    `
+  }
+}
+
+/**
+ * Handle "Ver mas beneficiarios" — load next page of concesiones.
+ */
+async function handleLoadMoreConcesiones(e) {
+  const btn = e.currentTarget
+  const bdnsCode = btn.dataset.bdnsCode
+  const nextPage = parseInt(btn.dataset.nextPage, 10)
+  const totalPages = parseInt(btn.dataset.totalPages, 10)
+
+  btn.disabled = true
+  btn.textContent = 'Cargando...'
+
+  try {
+    const data = await getConcesionesByGrant(bdnsCode, nextPage, 20)
+    const items = data.content || []
+
+    if (items.length > 0) {
+      // Insert new items before the button
+      const listHtml = createConcessionList(items)
+      btn.insertAdjacentHTML('beforebegin', listHtml)
+    }
+
+    // Update or remove the button
+    if (nextPage + 1 >= totalPages) {
+      btn.remove()
+    } else {
+      btn.dataset.nextPage = String(nextPage + 1)
+      btn.disabled = false
+      btn.textContent = 'Ver mas beneficiarios'
+    }
+  } catch {
+    btn.disabled = false
+    btn.textContent = 'Error — Reintentar'
   }
 }
 

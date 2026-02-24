@@ -84,6 +84,26 @@ export async function getGrantDetailCached(bdnsCode) {
 }
 
 /**
+ * Get concessions for a specific grant.
+ * @param {string} bdnsCode - BDNS convocatoria code
+ * @param {number} [page=0] - Page number
+ * @param {number} [pageSize=20] - Results per page
+ * @returns {Promise<Object>} Paginated concession results
+ */
+export async function getConcesionesByGrant(bdnsCode, page = 0, pageSize = 20) {
+  return fetchJson(`${BASE}/concesiones${buildQuery({ bdnsCode, page, pageSize })}`)
+}
+
+/**
+ * Search concessions with filters.
+ * @param {Object} params - Search parameters (bdnsCode, nifCif, page, pageSize)
+ * @returns {Promise<Object>} Paginated concession results
+ */
+export async function searchConcesiones(params = {}) {
+  return fetchJson(`${BASE}/concesiones${buildQuery(params)}`)
+}
+
+/**
  * Get a catalog by name.
  * @param {string} name - regiones|finalidades|instrumentos|actividades|beneficiarios
  * @returns {Promise<Array>} Catalog data

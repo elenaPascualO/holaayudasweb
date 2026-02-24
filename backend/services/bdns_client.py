@@ -120,6 +120,15 @@ def _build_search_params(params: dict[str, Any]) -> dict[str, Any]:
         bdns_params["order"] = "fechaRecepcion"
         bdns_params["direccion"] = params["orden"]
 
+    if params.get("tiposBeneficiario"):
+        bdns_params["tiposBeneficiario"] = params["tiposBeneficiario"]
+
+    if params.get("instrumentos"):
+        bdns_params["instrumentos"] = params["instrumentos"]
+
+    if params.get("finalidad") is not None:
+        bdns_params["finalidad"] = params["finalidad"]
+
     return bdns_params
 
 
@@ -239,6 +248,40 @@ async def get_convocatoria_detail(bdns_code: str) -> dict[str, Any]:
 
     data = await _fetch("/convocatorias", params={"vpd": BDNS_VPD, "numConv": bdns_code})
     cache.set(key, data, CACHE_TTL_DETAIL)
+    return data
+
+
+async def search_concesiones(params: dict[str, Any]) -> dict[str, Any]:
+    """Search concessions via /concesiones/busqueda.
+
+    Args:
+        params: Search parameters (bdnsCode, nifCif, page, pageSize).
+
+    Returns:
+        Paginated response with content, totalElements, totalPages, etc.
+    """
+    bdns_params: dict[str, Any] = {"vpd": BDNS_VPD}
+
+    if params.get("bdnsCode"):
+        bdns_params["numeroConvocatoria"] = params["bdnsCode"]
+
+    if params.get("nifCif"):
+        bdns_params["nifCif"] = params["nifCif"]
+
+    if params.get("page") is not None:
+        bdns_params["page"] = params["page"]
+
+    if params.get("pageSize"):
+        bdns_params["pageSize"] = params["pageSize"]
+
+    key = _cache_key("concesiones", bdns_params)
+
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    data = await _fetch("/concesiones/busqueda", params=bdns_params)
+    cache.set(key, data, CACHE_TTL_SEARCH)
     return data
 
 

@@ -24,9 +24,13 @@ const ADMIN_TYPES = [
  * @param {Object} regionData - Region lists for dropdowns
  * @param {Array<{id: number, name: string}>} [regionData.communities]
  * @param {Array<{id: number, name: string}>} [regionData.provinces]
+ * @param {Object} [catalogs] - Catalog data for advanced filters
+ * @param {Array<{id: number, descripcion: string}>} [catalogs.instrumentos]
+ * @param {Array<{id: number, descripcion: string}>} [catalogs.beneficiarios]
+ * @param {Array<{id: number, descripcion: string}>} [catalogs.finalidades]
  * @returns {string} HTML
  */
-export function createFilterPanel(currentFilters = {}, regionData = {}) {
+export function createFilterPanel(currentFilters = {}, regionData = {}, catalogs = {}) {
   return `
     <div class="bg-white rounded-xl border border-gray-100 p-4">
       <div class="flex items-center justify-between mb-4">
@@ -125,6 +129,10 @@ export function createFilterPanel(currentFilters = {}, regionData = {}) {
           </div>
         </fieldset>
 
+        ${createCatalogSelect('instrumentos', 'Tipo de ayuda', catalogs.instrumentos || [], currentFilters.instrumentos)}
+        ${createCatalogSelect('tiposBeneficiario', '¿Para quien?', catalogs.beneficiarios || [], currentFilters.tiposBeneficiario)}
+        ${createCatalogSelect('finalidad', 'Tematica', catalogs.finalidades || [], currentFilters.finalidad)}
+
         <button
           type="submit"
           class="w-full py-2 text-sm font-medium text-white bg-primary rounded-lg
@@ -217,7 +225,7 @@ function createMonthSelect(id, dateStr) {
  * @returns {boolean}
  */
 function hasActiveFilters(filters) {
-  return !!(filters.estado || filters.tipoAdministracion || filters.fechaDesde || filters.fechaHasta || filters.regiones)
+  return !!(filters.estado || filters.tipoAdministracion || filters.fechaDesde || filters.fechaHasta || filters.regiones || filters.instrumentos || filters.tiposBeneficiario || filters.finalidad)
 }
 
 /**
@@ -230,6 +238,38 @@ function hasActiveFilters(filters) {
  * @param {boolean} visible - Whether to show the dropdown
  * @returns {string} HTML
  */
+/**
+ * Create a catalog dropdown (instrumentos, beneficiarios, finalidades).
+ * @param {string} name - Form field name
+ * @param {string} label - Display label
+ * @param {Array<{id: number, descripcion: string}>} options - Catalog options
+ * @param {string} selectedValue - Currently selected value
+ * @returns {string} HTML
+ */
+function createCatalogSelect(name, label, options, selectedValue) {
+  if (options.length === 0) return ''
+  return `
+    <fieldset>
+      <legend class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+        ${escapeHtml(label)}
+      </legend>
+      <select
+        id="filter-${name}"
+        name="${name}"
+        class="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg
+               focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary"
+      >
+        <option value="">Todas</option>
+        ${options.map((o) => `
+          <option value="${o.id}" ${String(o.id) === String(selectedValue) ? 'selected' : ''}>
+            ${escapeHtml(o.descripcion)}
+          </option>
+        `).join('')}
+      </select>
+    </fieldset>
+  `
+}
+
 function createRegionSelect(id, wrapperId, label, options, selectedValue, visible) {
   if (options.length === 0) return `<div id="${wrapperId}" class="hidden"></div>`
   return `
