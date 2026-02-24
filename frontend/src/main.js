@@ -400,7 +400,10 @@ async function handleLoadConcesiones(e) {
 
     if (items.length === 0) {
       container.innerHTML = `
-        <p class="text-sm text-gray-400">No hay concesiones registradas para esta convocatoria.</p>
+        <div class="text-sm text-gray-400 space-y-1">
+          <p>No constan concesiones en la BDNS para esta convocatoria.</p>
+          <p class="text-xs">Esto puede deberse a que la ayuda aun no se ha resuelto, no fue concedida, o las concesiones no se registraron en el sistema.</p>
+        </div>
       `
       return
     }
