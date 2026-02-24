@@ -1,7 +1,6 @@
 .env
 feedback.jsonl
 CLAUDE.md
-doc/
 
 # IDE / tooling
 .idea/
