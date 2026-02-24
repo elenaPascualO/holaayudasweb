@@ -140,6 +140,30 @@ async def test_document_proxy_inline_pdf(mock_get_client, client):
 
 
 @patch("backend.routes.convocatorias.get_client", new_callable=AsyncMock)
+async def test_document_proxy_octet_stream_pdf_magic_bytes(mock_get_client, client):
+    """Document proxy detects PDF via magic bytes when content-type is octet-stream."""
+    from unittest.mock import MagicMock
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {
+        "content-type": "application/octet-stream",
+        "content-disposition": 'attachment; filename="doc"',
+    }
+    mock_response.content = b"%PDF-1.6 fake content"
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+    mock_get_client.return_value = mock_client
+
+    response = await client.get("/api/documentos/77777")
+    assert response.status_code == 200
+    assert response.headers.get("content-type") == "application/pdf"
+    assert "inline" in response.headers.get("content-disposition", "")
+
+
+@patch("backend.routes.convocatorias.get_client", new_callable=AsyncMock)
 async def test_document_proxy_keeps_attachment_for_zip(mock_get_client, client):
     """Document proxy keeps Content-Disposition as attachment for non-viewable types."""
     from unittest.mock import MagicMock

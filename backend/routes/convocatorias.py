@@ -122,17 +122,19 @@ async def get_document(doc_id: str) -> StreamingResponse:
     # Extract the base MIME type (ignore charset etc.)
     base_type = content_type.split(";")[0].strip().lower()
 
+    # BDNS sometimes returns application/octet-stream for PDFs — detect via magic bytes
+    if base_type == "application/octet-stream" and response.content[:5] == b"%PDF-":
+        content_type = "application/pdf"
+        base_type = "application/pdf"
+
     headers: dict[str, str] = {}
 
     # Copy original content-disposition if present
     original_disposition = response.headers.get("content-disposition", "")
 
     if base_type in _VIEWABLE_TYPES:
-        # Change attachment to inline so the browser displays it
-        if original_disposition:
-            headers["Content-Disposition"] = original_disposition.replace("attachment", "inline")
-        else:
-            headers["Content-Disposition"] = "inline"
+        # Force inline so the browser displays it in its built-in viewer
+        headers["Content-Disposition"] = "inline"
     elif original_disposition:
         headers["Content-Disposition"] = original_disposition
 
