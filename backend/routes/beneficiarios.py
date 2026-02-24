@@ -8,6 +8,7 @@ from backend.services.bdns_client import (
     search_top_beneficiaries,
 )
 from backend.services.beneficiarios_db import (
+    get_top_beneficiarios_aggregated_async,
     has_data,
     search_beneficiarios_async,
 )
@@ -27,9 +28,12 @@ async def get_top_beneficiaries(
 ) -> dict:
     """Search top beneficiaries with filters.
 
-    When `q` is provided, searches the local SQLite FTS5 index.
-    Otherwise, proxies to the BDNS API directly.
+    Routing logic:
+    1. If `q` is provided → SQLite FTS5 search (aggregated when anio=None).
+    2. If anio=None, no nifCif, and DB has data → aggregated SQLite query.
+    3. Otherwise → proxy to BDNS API.
     """
+    # Path 1: Text search via SQLite FTS5
     if q and q.strip():
         if not has_data():
             raise HTTPException(
@@ -43,7 +47,14 @@ async def get_top_beneficiaries(
             page_size=pageSize,
         )
 
-    # No text search → proxy to BDNS
+    # Path 2: No year + no nifCif + DB has data → aggregated from SQLite
+    if anio is None and not nifCif and has_data():
+        return await get_top_beneficiarios_aggregated_async(
+            page=page,
+            page_size=pageSize,
+        )
+
+    # Path 3: Specific year or nifCif → proxy to BDNS
     params: dict = {
         "page": page,
         "pageSize": pageSize,

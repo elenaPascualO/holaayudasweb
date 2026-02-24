@@ -190,7 +190,7 @@ function setupEventListeners() {
       const text = link.textContent.toLowerCase()
       if (text.includes('solicitar en sede')) {
         track(events.DETAIL_APPLY)
-      } else if (href.includes('idDocumento')) {
+      } else if (href.includes('/api/documentos/') || href.includes('idDocumento')) {
         track(events.DETAIL_DOCUMENT)
       } else if (text.includes('bases reguladoras')) {
         track(events.DETAIL_BASES)

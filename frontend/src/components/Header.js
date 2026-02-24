@@ -14,7 +14,7 @@ export function createHeader() {
         </a>
         <nav class="flex items-center gap-4">
           <a href="/transparencia" data-link
-             class="text-sm text-gray-500 hover:text-primary transition-colors no-underline">
+             class="text-sm font-medium px-3 py-1 rounded-full bg-primary/5 text-primary hover:bg-primary/10 transition-colors no-underline">
             Transparencia
           </a>
         </nav>

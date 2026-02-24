@@ -54,9 +54,10 @@ async def test_search_top_beneficiaries_with_nifcif(mock_search, client):
     assert call_params["nifCif"] == "A07129430"
 
 
+@patch("backend.routes.beneficiarios.has_data", return_value=False)
 @patch("backend.routes.beneficiarios.search_top_beneficiaries", new_callable=AsyncMock)
-async def test_search_top_beneficiaries_default_sort(mock_search, client):
-    """Search endpoint uses default sort (ayudaETotal desc)."""
+async def test_search_top_beneficiaries_default_sort(mock_search, mock_has_data, client):
+    """Search endpoint uses default sort via BDNS when DB is empty."""
     mock_search.return_value = {
         "content": [],
         "totalElements": 0,
@@ -69,6 +70,24 @@ async def test_search_top_beneficiaries_default_sort(mock_search, client):
     call_params = mock_search.call_args[0][0]
     assert call_params["order"] == "ayudaETotal"
     assert call_params["direccion"] == "desc"
+
+
+@patch("backend.routes.beneficiarios.has_data", return_value=True)
+@patch("backend.routes.beneficiarios.get_top_beneficiarios_aggregated_async", new_callable=AsyncMock)
+async def test_no_year_uses_aggregated_sqlite(mock_aggregated, mock_has_data, client):
+    """When anio=None and no q, uses aggregated SQLite query."""
+    mock_aggregated.return_value = {
+        "content": [
+            {"idPersona": 1, "beneficiario": "X", "nifCif": "A123", "nombre": "Test", "ayudaETotal": 100},
+        ],
+        "totalElements": 1,
+        "totalPages": 1,
+        "number": 0,
+        "size": 20,
+    }
+    response = await client.get("/api/beneficiarios-top")
+    assert response.status_code == 200
+    mock_aggregated.assert_called_once_with(page=0, page_size=20)
 
 
 @patch("backend.routes.beneficiarios.get_top_beneficiaries_years", new_callable=AsyncMock)

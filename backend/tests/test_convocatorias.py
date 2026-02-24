@@ -113,3 +113,50 @@ async def test_grant_detail_not_found(mock_detail, client):
     mock_detail.side_effect = BDNSError("Resource not found", status_code=404)
     response = await client.get("/api/convocatorias/999999")
     assert response.status_code == 404
+
+
+@patch("backend.routes.convocatorias.get_client", new_callable=AsyncMock)
+async def test_document_proxy_inline_pdf(mock_get_client, client):
+    """Document proxy sets Content-Disposition to inline for PDF files."""
+    from unittest.mock import MagicMock
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {
+        "content-type": "application/pdf",
+        "content-disposition": 'attachment; filename="doc.pdf"',
+    }
+    mock_response.content = b"%PDF-1.4 fake content"
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+    mock_get_client.return_value = mock_client
+
+    response = await client.get("/api/documentos/12345")
+    assert response.status_code == 200
+    assert "inline" in response.headers.get("content-disposition", "")
+    assert "attachment" not in response.headers.get("content-disposition", "")
+
+
+@patch("backend.routes.convocatorias.get_client", new_callable=AsyncMock)
+async def test_document_proxy_keeps_attachment_for_zip(mock_get_client, client):
+    """Document proxy keeps Content-Disposition as attachment for non-viewable types."""
+    from unittest.mock import MagicMock
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {
+        "content-type": "application/zip",
+        "content-disposition": 'attachment; filename="docs.zip"',
+    }
+    mock_response.content = b"PK\x03\x04 fake zip"
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+    mock_get_client.return_value = mock_client
+
+    response = await client.get("/api/documentos/99999")
+    assert response.status_code == 200
+    assert "attachment" in response.headers.get("content-disposition", "")

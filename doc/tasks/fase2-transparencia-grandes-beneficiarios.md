@@ -130,16 +130,16 @@ Reemplazar tagline `"Busca ayudas y subvenciones publicas"` por `<nav>` con link
 ## Paso 7: Tests
 
 ### Backend (`backend/tests/test_beneficiarios.py`)
-- [ ] Test busqueda con filtro de año
-- [ ] Test busqueda con NIF/CIF
-- [ ] Test sort por defecto (ayudaETotal desc)
-- [ ] Test endpoint de años
+- [x] Test busqueda con filtro de año
+- [x] Test busqueda con NIF/CIF
+- [x] Test sort por defecto (ayudaETotal desc)
+- [x] Test endpoint de años
 
 ### Frontend (`frontend/tests/beneficiaryRow.test.js`)
-- [ ] Test `parseTopBeneficiaryName` con formato "ES NIF NOMBRE"
-- [ ] Test `parseTopBeneficiaryName` con formato sin ES
-- [ ] Test `parseTopBeneficiaryName` con null/empty
-- [ ] Test `createBeneficiaryRow` renderiza rank, nombre, importe, barra proporcional
+- [x] Test `parseTopBeneficiaryName` con formato "ES NIF NOMBRE"
+- [x] Test `parseTopBeneficiaryName` con formato sin ES
+- [x] Test `parseTopBeneficiaryName` con null/empty
+- [x] Test `createBeneficiaryRow` renderiza rank, nombre, importe, barra proporcional
 
 ---
 

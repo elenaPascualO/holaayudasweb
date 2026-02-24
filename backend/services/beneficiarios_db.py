@@ -149,9 +149,12 @@ def search_beneficiarios(
 ) -> dict:
     """Search beneficiarios by name using FTS5.
 
+    When anio is None, aggregates results by nif_cif (summing ayuda_e_total
+    across years) to avoid duplicate entries per year.
+
     Args:
         q: Search text (e.g., "Air Europa").
-        anio: Optional year filter.
+        anio: Optional year filter. None = aggregate across all years.
         page: Page number (0-indexed).
         page_size: Results per page.
         db_path: Override path (useful for tests).
@@ -166,48 +169,83 @@ def search_beneficiarios(
 
     conn = _get_connection(db_path)
     try:
-        # Build WHERE clause
-        where_parts = ["b.id IN (SELECT rowid FROM beneficiarios_fts WHERE beneficiarios_fts MATCH ?)"]
+        fts_filter = "b.id IN (SELECT rowid FROM beneficiarios_fts WHERE beneficiarios_fts MATCH ?)"
         params: list = [fts_query]
 
         if anio is not None:
-            where_parts.append("b.ejercicio = ?")
+            # Specific year: return individual rows (original behavior)
+            where_clause = f"{fts_filter} AND b.ejercicio = ?"
             params.append(anio)
 
-        where_clause = " AND ".join(where_parts)
+            count_sql = f"SELECT COUNT(*) FROM beneficiarios b WHERE {where_clause}"
+            total = conn.execute(count_sql, params).fetchone()[0]
 
-        # Count total matches
-        count_sql = f"SELECT COUNT(*) FROM beneficiarios b WHERE {where_clause}"
-        total = conn.execute(count_sql, params).fetchone()[0]
+            if total == 0:
+                return _empty_response(page, page_size)
 
-        if total == 0:
-            return _empty_response(page, page_size)
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            offset = page * page_size
 
-        total_pages = max(1, (total + page_size - 1) // page_size)
+            data_sql = f"""
+                SELECT b.id_persona, b.beneficiario, b.nif_cif, b.nombre,
+                       b.ejercicio, b.ayuda_e_total
+                FROM beneficiarios b
+                WHERE {where_clause}
+                ORDER BY b.ayuda_e_total DESC
+                LIMIT ? OFFSET ?
+            """
+            rows = conn.execute(data_sql, [*params, page_size, offset]).fetchall()
 
-        # Fetch page
-        offset = page * page_size
-        data_sql = f"""
-            SELECT b.id_persona, b.beneficiario, b.nif_cif, b.nombre,
-                   b.ejercicio, b.ayuda_e_total
-            FROM beneficiarios b
-            WHERE {where_clause}
-            ORDER BY b.ayuda_e_total DESC
-            LIMIT ? OFFSET ?
-        """
-        rows = conn.execute(data_sql, [*params, page_size, offset]).fetchall()
+            content = [
+                {
+                    "idPersona": row["id_persona"],
+                    "beneficiario": row["beneficiario"],
+                    "nifCif": row["nif_cif"],
+                    "nombre": row["nombre"],
+                    "ejercicio": row["ejercicio"],
+                    "ayudaETotal": row["ayuda_e_total"],
+                }
+                for row in rows
+            ]
+        else:
+            # No year filter: aggregate by nif_cif across all years
+            count_sql = f"""
+                SELECT COUNT(DISTINCT b.nif_cif)
+                FROM beneficiarios b
+                WHERE {fts_filter} AND b.nif_cif IS NOT NULL
+            """
+            total = conn.execute(count_sql, params).fetchone()[0]
 
-        content = [
-            {
-                "idPersona": row["id_persona"],
-                "beneficiario": row["beneficiario"],
-                "nifCif": row["nif_cif"],
-                "nombre": row["nombre"],
-                "ejercicio": row["ejercicio"],
-                "ayudaETotal": row["ayuda_e_total"],
-            }
-            for row in rows
-        ]
+            if total == 0:
+                return _empty_response(page, page_size)
+
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            offset = page * page_size
+
+            data_sql = f"""
+                SELECT MAX(b.id_persona) as id_persona,
+                       MAX(b.beneficiario) as beneficiario,
+                       b.nif_cif,
+                       MAX(b.nombre) as nombre,
+                       SUM(b.ayuda_e_total) as ayuda_e_total
+                FROM beneficiarios b
+                WHERE {fts_filter} AND b.nif_cif IS NOT NULL
+                GROUP BY b.nif_cif
+                ORDER BY SUM(b.ayuda_e_total) DESC
+                LIMIT ? OFFSET ?
+            """
+            rows = conn.execute(data_sql, [*params, page_size, offset]).fetchall()
+
+            content = [
+                {
+                    "idPersona": row["id_persona"],
+                    "beneficiario": row["beneficiario"],
+                    "nifCif": row["nif_cif"],
+                    "nombre": row["nombre"],
+                    "ayudaETotal": row["ayuda_e_total"],
+                }
+                for row in rows
+            ]
 
         return {
             "content": content,
@@ -241,6 +279,94 @@ async def search_beneficiarios_async(
     """
     return await asyncio.to_thread(
         search_beneficiarios, q, anio, page, page_size, db_path
+    )
+
+
+def get_top_beneficiarios_aggregated(
+    page: int = 0,
+    page_size: int = 20,
+    db_path: str | None = None,
+) -> dict:
+    """Get top beneficiarios aggregated across all years.
+
+    Groups by nif_cif and sums ayuda_e_total to produce a deduplicated
+    ranking. Used when no year filter is selected.
+
+    Args:
+        page: Page number (0-indexed).
+        page_size: Results per page.
+        db_path: Override path (useful for tests).
+
+    Returns:
+        Dict in BDNS-compatible paginated format.
+    """
+    conn = _get_connection(db_path)
+    try:
+        total = conn.execute(
+            "SELECT COUNT(DISTINCT nif_cif) FROM beneficiarios WHERE nif_cif IS NOT NULL"
+        ).fetchone()[0]
+
+        if total == 0:
+            return _empty_response(page, page_size)
+
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        offset = page * page_size
+
+        rows = conn.execute(
+            """
+            SELECT MAX(id_persona) as id_persona,
+                   MAX(beneficiario) as beneficiario,
+                   nif_cif,
+                   MAX(nombre) as nombre,
+                   SUM(ayuda_e_total) as ayuda_e_total
+            FROM beneficiarios
+            WHERE nif_cif IS NOT NULL
+            GROUP BY nif_cif
+            ORDER BY SUM(ayuda_e_total) DESC
+            LIMIT ? OFFSET ?
+            """,
+            (page_size, offset),
+        ).fetchall()
+
+        content = [
+            {
+                "idPersona": row["id_persona"],
+                "beneficiario": row["beneficiario"],
+                "nifCif": row["nif_cif"],
+                "nombre": row["nombre"],
+                "ayudaETotal": row["ayuda_e_total"],
+            }
+            for row in rows
+        ]
+
+        return {
+            "content": content,
+            "totalElements": total,
+            "totalPages": total_pages,
+            "number": page,
+            "size": page_size,
+        }
+    finally:
+        conn.close()
+
+
+async def get_top_beneficiarios_aggregated_async(
+    page: int = 0,
+    page_size: int = 20,
+    db_path: str | None = None,
+) -> dict:
+    """Async wrapper for get_top_beneficiarios_aggregated.
+
+    Args:
+        page: Page number.
+        page_size: Results per page.
+        db_path: Override path.
+
+    Returns:
+        Paginated results dict.
+    """
+    return await asyncio.to_thread(
+        get_top_beneficiarios_aggregated, page, page_size, db_path
     )
 
 

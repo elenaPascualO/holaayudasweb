@@ -61,8 +61,8 @@ Hola Ayudas tiene la Fase 0 completada (busqueda basica de convocatorias con fil
 
 ### 1.5 Tests
 
-- [ ] Backend: test en `backend/tests/test_convocatorias.py` para los nuevos params
-- [ ] Frontend: test en `frontend/tests/catalogCache.test.js` para getCatalogs()
+- [x] Backend: test en `backend/tests/test_convocatorias.py` para los nuevos params
+- [x] Frontend: test en `frontend/tests/catalogCache.test.js` para getCatalogs()
 
 ---
 
@@ -114,8 +114,8 @@ Hola Ayudas tiene la Fase 0 completada (busqueda basica de convocatorias con fil
 
 ### 2.5 Tests
 
-- [ ] Backend: `backend/tests/test_concesiones.py` — test del nuevo endpoint
-- [ ] Frontend: `frontend/tests/concessionCard.test.js` — test del componente
+- [x] Backend: `backend/tests/test_concesiones.py` — test del nuevo endpoint
+- [x] Frontend: `frontend/tests/concessionCard.test.js` — test del componente
 
 ---
 

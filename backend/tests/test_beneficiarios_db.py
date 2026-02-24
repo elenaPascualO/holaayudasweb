@@ -8,6 +8,7 @@ import pytest
 from backend.services.beneficiarios_db import (
     _build_fts_query,
     get_sync_status,
+    get_top_beneficiarios_aggregated,
     has_data,
     init_db,
     parse_beneficiario,
@@ -195,8 +196,10 @@ class TestSearchBeneficiarios:
         assert result["content"][0]["nombre"] == "AIR EUROPA LINEAS AEREAS, SA"
 
     def test_search_partial_name(self, populated_db):
+        # Without year filter → aggregated: 1 unique nif_cif
         result = search_beneficiarios("iberdrola", db_path=populated_db)
-        assert result["totalElements"] == 2  # 2023 + 2024
+        assert result["totalElements"] == 1
+        assert result["content"][0]["ayudaETotal"] == 5500000.0  # 3M + 2.5M
 
     def test_search_with_year_filter(self, populated_db):
         result = search_beneficiarios("iberdrola", anio=2024, db_path=populated_db)
@@ -214,8 +217,8 @@ class TestSearchBeneficiarios:
         # Empty query returns no results (FTS needs tokens)
         assert result["totalElements"] == 0
 
-    def test_result_format(self, populated_db):
-        result = search_beneficiarios("air europa", db_path=populated_db)
+    def test_result_format_with_year(self, populated_db):
+        result = search_beneficiarios("air europa", anio=2024, db_path=populated_db)
         assert "content" in result
         assert "totalElements" in result
         assert "totalPages" in result
@@ -230,21 +233,36 @@ class TestSearchBeneficiarios:
         assert "ejercicio" in item
         assert "ayudaETotal" in item
 
+    def test_result_format_no_year_omits_ejercicio(self, populated_db):
+        result = search_beneficiarios("air europa", db_path=populated_db)
+        item = result["content"][0]
+        assert "ejercicio" not in item
+
     def test_results_ordered_by_amount_desc(self, populated_db):
-        result = search_beneficiarios("iberdrola", db_path=populated_db)
+        # Add more data so aggregation produces multiple results
+        result = search_beneficiarios("iberdrola", anio=2024, db_path=populated_db)
         amounts = [r["ayudaETotal"] for r in result["content"]]
         assert amounts == sorted(amounts, reverse=True)
 
     def test_pagination_page_1(self, populated_db):
-        # Get all with small page size
-        p0 = search_beneficiarios("iberdrola", page=0, page_size=1, db_path=populated_db)
-        p1 = search_beneficiarios("iberdrola", page=1, page_size=1, db_path=populated_db)
-
-        assert p0["totalElements"] == 2
-        assert p0["totalPages"] == 2
+        # With specific year, iberdrola has 2 rows (2023 + 2024)
+        p0 = search_beneficiarios("iberdrola", anio=2024, page=0, page_size=1, db_path=populated_db)
+        assert p0["totalElements"] == 1  # Only 1 record in 2024
         assert len(p0["content"]) == 1
-        assert len(p1["content"]) == 1
-        assert p0["content"][0]["ejercicio"] != p1["content"][0]["ejercicio"]
+
+    def test_search_no_year_aggregates(self, populated_db):
+        """When anio=None, results are aggregated by nif_cif."""
+        result = search_beneficiarios("iberdrola", db_path=populated_db)
+        assert result["totalElements"] == 1
+        assert result["content"][0]["ayudaETotal"] == 5500000.0
+        assert "ejercicio" not in result["content"][0]
+
+    def test_search_with_year_not_aggregated(self, populated_db):
+        """When anio is set, each year row is returned individually."""
+        result = search_beneficiarios("iberdrola", anio=2024, db_path=populated_db)
+        assert result["totalElements"] == 1
+        assert result["content"][0]["ejercicio"] == 2024
+        assert result["content"][0]["ayudaETotal"] == 3000000.0
 
     def test_case_insensitive_search(self, populated_db):
         result = search_beneficiarios("AIR EUROPA", db_path=populated_db)
@@ -252,3 +270,46 @@ class TestSearchBeneficiarios:
 
         result2 = search_beneficiarios("air europa", db_path=populated_db)
         assert result2["totalElements"] == 1
+
+
+class TestGetTopBeneficiariosAggregated:
+    """Tests for get_top_beneficiarios_aggregated()."""
+
+    def test_aggregates_across_years(self, populated_db):
+        result = get_top_beneficiarios_aggregated(db_path=populated_db)
+        nifs = [r["nifCif"] for r in result["content"]]
+        # Iberdrola B12345678 appears in 2023+2024 but should be 1 result
+        assert nifs.count("B12345678") == 1
+
+    def test_sums_amounts(self, populated_db):
+        result = get_top_beneficiarios_aggregated(db_path=populated_db)
+        iberdrola = next(r for r in result["content"] if r["nifCif"] == "B12345678")
+        assert iberdrola["ayudaETotal"] == 5500000.0  # 3M + 2.5M
+
+    def test_no_duplicates(self, populated_db):
+        result = get_top_beneficiarios_aggregated(db_path=populated_db)
+        nifs = [r["nifCif"] for r in result["content"]]
+        assert len(nifs) == len(set(nifs))
+
+    def test_ordered_by_total_desc(self, populated_db):
+        result = get_top_beneficiarios_aggregated(db_path=populated_db)
+        amounts = [r["ayudaETotal"] for r in result["content"]]
+        assert amounts == sorted(amounts, reverse=True)
+
+    def test_pagination(self, populated_db):
+        p0 = get_top_beneficiarios_aggregated(page=0, page_size=2, db_path=populated_db)
+        p1 = get_top_beneficiarios_aggregated(page=1, page_size=2, db_path=populated_db)
+
+        assert p0["totalPages"] == 2  # 4 unique nif_cifs, page_size=2
+        assert len(p0["content"]) == 2
+        assert len(p1["content"]) == 2
+
+    def test_empty_db(self, db_path):
+        result = get_top_beneficiarios_aggregated(db_path=db_path)
+        assert result["totalElements"] == 0
+        assert result["content"] == []
+
+    def test_no_ejercicio_field(self, populated_db):
+        result = get_top_beneficiarios_aggregated(db_path=populated_db)
+        for item in result["content"]:
+            assert "ejercicio" not in item

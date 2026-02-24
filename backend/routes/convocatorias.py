@@ -1,9 +1,11 @@
 """Grant (convocatoria) routes."""
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from backend.services.bdns_client import (
     BDNSError,
+    get_client,
     get_latest_convocatorias,
     get_convocatoria_detail,
     search_convocatorias,
@@ -11,6 +13,18 @@ from backend.services.bdns_client import (
 )
 
 router = APIRouter(prefix="/api", tags=["convocatorias"])
+
+# Content types that browsers can display inline
+_VIEWABLE_TYPES = {
+    "application/pdf",
+    "text/html",
+    "text/plain",
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/svg+xml",
+}
 
 
 @router.get("/convocatorias")
@@ -83,6 +97,50 @@ async def latest_grants(
         return await get_latest_convocatorias({"page": page, "pageSize": pageSize})
     except BDNSError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
+
+
+@router.get("/documentos/{doc_id}")
+async def get_document(doc_id: str) -> StreamingResponse:
+    """Proxy a BDNS document, changing Content-Disposition to inline for viewable types.
+
+    This lets the browser open PDFs and images in its built-in viewer
+    instead of forcing a download.
+    """
+    import io
+
+    client = await get_client()
+    try:
+        response = await client.get(
+            "/convocatorias/documentos",
+            params={"idDocumento": doc_id},
+        )
+        response.raise_for_status()
+    except Exception:
+        raise HTTPException(status_code=502, detail="Error fetching document from BDNS")
+
+    content_type = response.headers.get("content-type", "application/octet-stream")
+    # Extract the base MIME type (ignore charset etc.)
+    base_type = content_type.split(";")[0].strip().lower()
+
+    headers: dict[str, str] = {}
+
+    # Copy original content-disposition if present
+    original_disposition = response.headers.get("content-disposition", "")
+
+    if base_type in _VIEWABLE_TYPES:
+        # Change attachment to inline so the browser displays it
+        if original_disposition:
+            headers["Content-Disposition"] = original_disposition.replace("attachment", "inline")
+        else:
+            headers["Content-Disposition"] = "inline"
+    elif original_disposition:
+        headers["Content-Disposition"] = original_disposition
+
+    return StreamingResponse(
+        io.BytesIO(response.content),
+        media_type=content_type,
+        headers=headers,
+    )
 
 
 @router.get("/convocatorias/{bdns_code}")
