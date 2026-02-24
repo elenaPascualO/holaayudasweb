@@ -16,6 +16,7 @@ import { formatNumber, escapeHtml } from '../utils/formatters.js'
 export async function renderConcesionesPage(params) {
   const nifCif = params.nifCif || ''
   const anio = params.anio || ''
+  const returnTo = params.returnTo || ''
   const page = parseInt(params.page || '0', 10)
   const pageSize = 20
 
@@ -38,7 +39,7 @@ export async function renderConcesionesPage(params) {
     results = await searchConcesiones(searchParams)
   } catch {
     return `
-      ${createPageHeader(nifCif, anio)}
+      ${createPageHeader(nifCif, anio, '', returnTo)}
       ${createEmptyState(
         'Error al cargar',
         'No se pudo conectar con el servidor. Intentalo de nuevo.'
@@ -49,7 +50,7 @@ export async function renderConcesionesPage(params) {
   const items = results.content || []
   if (items.length === 0) {
     return `
-      ${createPageHeader(nifCif, anio)}
+      ${createPageHeader(nifCif, anio, '', returnTo)}
       ${createEmptyState(
         'Sin concesiones',
         `No se encontraron concesiones para ${escapeHtml(nifCif)}${anio ? ` en ${anio}` : ''}.`
@@ -63,14 +64,15 @@ export async function renderConcesionesPage(params) {
 
   const total = results.totalElements || items.length
 
-  // Build base URL for pagination
+  // Build base URL for pagination (preserve returnTo across pages)
   const baseParams = new URLSearchParams()
   baseParams.set('nifCif', nifCif)
   if (anio) baseParams.set('anio', anio)
+  if (returnTo) baseParams.set('returnTo', returnTo)
   const baseUrl = `/concesiones?${baseParams.toString()}`
 
   return `
-    ${createPageHeader(nifCif, anio, name)}
+    ${createPageHeader(nifCif, anio, name, returnTo)}
 
     <p class="text-sm text-gray-400 mb-4">
       ${formatNumber(total)} concesion${total !== 1 ? 'es' : ''}${anio ? ` en ${anio}` : ''}
@@ -104,14 +106,20 @@ function parseBeneficiaryName(raw) {
  * @param {string} nifCif - NIF/CIF
  * @param {string} anio - Year filter
  * @param {string} [name] - Beneficiary name
+ * @param {string} [returnTo] - Full URL to return to (preserves transparencia state)
  * @returns {string} HTML
  */
-function createPageHeader(nifCif, anio, name = '') {
+function createPageHeader(nifCif, anio, name = '', returnTo = '') {
   const displayName = name || nifCif
-  // Build back link to transparencia preserving year
-  const backParams = new URLSearchParams()
-  if (anio) backParams.set('anio', anio)
-  const backUrl = `/transparencia${backParams.toString() ? '?' + backParams.toString() : ''}`
+  // Use returnTo if available (preserves full transparencia state), otherwise fall back to year only
+  let backUrl
+  if (returnTo) {
+    backUrl = returnTo
+  } else {
+    const backParams = new URLSearchParams()
+    if (anio) backParams.set('anio', anio)
+    backUrl = `/transparencia${backParams.toString() ? '?' + backParams.toString() : ''}`
+  }
 
   return `
     <div class="mb-6">

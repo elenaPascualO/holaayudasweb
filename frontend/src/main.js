@@ -582,6 +582,9 @@ async function handleBeneficiaryDrillDown(e) {
     if (total > 5) {
       const linkParams = new URLSearchParams({ nifCif })
       if (anio) linkParams.set('anio', anio)
+      // Preserve current transparencia URL so user can return to same state
+      const returnTo = window.location.pathname + window.location.search
+      linkParams.set('returnTo', returnTo)
       html += `
         <a href="/concesiones?${linkParams.toString()}" data-link
            class="inline-flex items-center gap-1 mt-3 text-sm font-medium text-primary hover:underline no-underline">
