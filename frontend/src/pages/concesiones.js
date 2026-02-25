@@ -144,10 +144,11 @@ function parseBeneficiaryName(raw) {
 function createHeader(ctx) {
   const { bdnsCode, nifCif, anio, returnTo, grantTitle, beneficiaryName } = ctx
 
-  // Back link
+  // Back link — for bdnsCode mode use history.back() to avoid polluting the
+  // history stack (the user always arrives here from the detail page).
   let backUrl, backLabel
   if (bdnsCode) {
-    backUrl = `/ayuda/${encodeURIComponent(bdnsCode)}`
+    backUrl = 'javascript:history.back()'
     backLabel = 'Volver a la ayuda'
   } else if (returnTo) {
     backUrl = returnTo
@@ -174,7 +175,7 @@ function createHeader(ctx) {
 
   return `
     <div class="mb-6">
-      <a href="${backUrl}" data-link
+      <a href="${backUrl}"${backUrl.startsWith('/') ? ' data-link' : ''}
          class="inline-flex items-center gap-1 text-sm text-primary hover:underline mb-3 no-underline">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
