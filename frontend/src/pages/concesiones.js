@@ -1,8 +1,8 @@
 /**
- * Concesiones page — paginated list of concesiones for a beneficiary.
+ * Concesiones page — paginated list of concesiones for a beneficiary or a grant.
  */
 
-import { searchConcesiones } from '../utils/api.js'
+import { searchConcesiones, getGrantDetailCached } from '../utils/api.js'
 import { createConcessionList } from '../components/ConcessionCard.js'
 import { createPagination } from '../components/Pagination.js'
 import { createEmptyState } from '../components/EmptyState.js'
@@ -10,36 +10,48 @@ import { formatNumber, escapeHtml } from '../utils/formatters.js'
 
 /**
  * Render the concesiones page.
- * @param {Object} params - Query parameters (nifCif, anio, page)
+ * Supports two modes:
+ * - bdnsCode: show all concesiones for a grant (from detail page)
+ * - nifCif: show all concesiones for a beneficiary (from transparencia)
+ * @param {Object} params - Query parameters (bdnsCode, nifCif, anio, page)
  * @returns {Promise<string>} HTML
  */
 export async function renderConcesionesPage(params) {
+  const bdnsCode = params.bdnsCode || ''
   const nifCif = params.nifCif || ''
   const anio = params.anio || ''
   const returnTo = params.returnTo || ''
   const page = parseInt(params.page || '0', 10)
   const pageSize = 20
 
-  if (!nifCif) {
+  if (!bdnsCode && !nifCif) {
     return createEmptyState(
-      'Falta el NIF/CIF',
-      'Esta pagina necesita un parametro nifCif para buscar concesiones.'
+      'Faltan parametros',
+      'Esta pagina necesita un parametro bdnsCode o nifCif para buscar concesiones.'
     )
   }
 
-  // Build search params
-  const searchParams = { nifCif, page, pageSize }
+  // Build search params — sort by amount descending
+  const searchParams = { page, pageSize, order: 'importe', direccion: 'desc' }
+  if (bdnsCode) searchParams.bdnsCode = bdnsCode
+  if (nifCif) searchParams.nifCif = nifCif
   if (anio) {
     searchParams.fechaDesde = `${anio}-01-01`
     searchParams.fechaHasta = `${anio}-12-31`
   }
 
-  let results
-  try {
-    results = await searchConcesiones(searchParams)
-  } catch {
+  // Fetch concesiones and grant title (if bdnsCode mode) in parallel
+  const headerCtx = { bdnsCode, nifCif, anio, returnTo, grantTitle: '' }
+
+  const [results, grantTitle] = await Promise.all([
+    searchConcesiones(searchParams).catch(() => null),
+    bdnsCode ? fetchGrantTitle(bdnsCode) : Promise.resolve(''),
+  ])
+  headerCtx.grantTitle = grantTitle
+
+  if (!results) {
     return `
-      ${createPageHeader(nifCif, anio, '', returnTo)}
+      ${createHeader(headerCtx)}
       ${createEmptyState(
         'Error al cargar',
         'No se pudo conectar con el servidor. Intentalo de nuevo.'
@@ -49,36 +61,45 @@ export async function renderConcesionesPage(params) {
 
   const items = results.content || []
   if (items.length === 0) {
+    const emptyLabel = bdnsCode
+      ? `la convocatoria ${escapeHtml(bdnsCode)}`
+      : escapeHtml(nifCif)
     return `
-      ${createPageHeader(nifCif, anio, '', returnTo)}
+      ${createHeader(headerCtx)}
       ${createEmptyState(
         'Sin concesiones',
-        `No se encontraron concesiones para ${escapeHtml(nifCif)}${anio ? ` en ${anio}` : ''}.`
+        `No se encontraron concesiones para ${emptyLabel}${anio ? ` en ${anio}` : ''}.`
       )}
     `
   }
 
-  // Extract beneficiary name from first result
-  const rawName = items[0].beneficiario || items[0].denominacion || nifCif
-  const name = parseBeneficiaryName(rawName)
+  // For nifCif mode, extract beneficiary name from first result
+  if (nifCif && !headerCtx.grantTitle) {
+    const rawName = items[0].beneficiario || items[0].denominacion || nifCif
+    headerCtx.beneficiaryName = parseBeneficiaryName(rawName)
+  }
 
   const total = results.totalElements || items.length
 
-  // Build base URL for pagination (preserve returnTo across pages)
+  // Build base URL for pagination
   const baseParams = new URLSearchParams()
-  baseParams.set('nifCif', nifCif)
+  if (bdnsCode) baseParams.set('bdnsCode', bdnsCode)
+  if (nifCif) baseParams.set('nifCif', nifCif)
   if (anio) baseParams.set('anio', anio)
   if (returnTo) baseParams.set('returnTo', returnTo)
   const baseUrl = `/concesiones?${baseParams.toString()}`
 
+  // For bdnsCode mode, show convocatoria link on each card
+  const showConvocatoria = !bdnsCode
+
   return `
-    ${createPageHeader(nifCif, anio, name, returnTo)}
+    ${createHeader(headerCtx)}
 
     <p class="text-sm text-gray-400 mb-4">
-      ${formatNumber(total)} concesion${total !== 1 ? 'es' : ''}${anio ? ` en ${anio}` : ''}
+      ${formatNumber(total)} concesion${total !== 1 ? 'es' : ''}${anio ? ` en ${anio}` : ''}, ordenadas por importe
     </p>
 
-    ${createConcessionList(items, { showConvocatoria: true })}
+    ${createConcessionList(items, { showConvocatoria })}
 
     ${createPagination(
       results.number ?? page,
@@ -87,6 +108,20 @@ export async function renderConcesionesPage(params) {
       baseUrl,
     )}
   `
+}
+
+/**
+ * Fetch grant title from detail cache/API. Returns empty string on failure.
+ * @param {string} bdnsCode
+ * @returns {Promise<string>}
+ */
+async function fetchGrantTitle(bdnsCode) {
+  try {
+    const detail = await getGrantDetailCached(bdnsCode)
+    return detail.descripcion || ''
+  } catch {
+    return ''
+  }
 }
 
 /**
@@ -103,22 +138,38 @@ function parseBeneficiaryName(raw) {
 
 /**
  * Create the page header with title and back link.
- * @param {string} nifCif - NIF/CIF
- * @param {string} anio - Year filter
- * @param {string} [name] - Beneficiary name
- * @param {string} [returnTo] - Full URL to return to (preserves transparencia state)
+ * @param {Object} ctx - Header context
  * @returns {string} HTML
  */
-function createPageHeader(nifCif, anio, name = '', returnTo = '') {
-  const displayName = name || nifCif
-  // Use returnTo if available (preserves full transparencia state), otherwise fall back to year only
-  let backUrl
-  if (returnTo) {
+function createHeader(ctx) {
+  const { bdnsCode, nifCif, anio, returnTo, grantTitle, beneficiaryName } = ctx
+
+  // Back link
+  let backUrl, backLabel
+  if (bdnsCode) {
+    backUrl = `/ayuda/${encodeURIComponent(bdnsCode)}`
+    backLabel = 'Volver a la ayuda'
+  } else if (returnTo) {
     backUrl = returnTo
+    backLabel = 'Volver a Transparencia'
   } else {
     const backParams = new URLSearchParams()
     if (anio) backParams.set('anio', anio)
     backUrl = `/transparencia${backParams.toString() ? '?' + backParams.toString() : ''}`
+    backLabel = 'Volver a Transparencia'
+  }
+
+  // Title
+  let title, subtitle
+  if (bdnsCode) {
+    title = 'Beneficiarios de esta ayuda'
+    subtitle = grantTitle
+      ? escapeHtml(grantTitle)
+      : `Convocatoria BDNS ${escapeHtml(bdnsCode)}`
+  } else {
+    const displayName = beneficiaryName || nifCif
+    title = `Concesiones de ${escapeHtml(displayName)}`
+    subtitle = `NIF/CIF: ${escapeHtml(nifCif)}${anio ? ` · Ano ${anio}` : ' · Todos los anos'}`
   }
 
   return `
@@ -128,14 +179,10 @@ function createPageHeader(nifCif, anio, name = '', returnTo = '') {
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
         </svg>
-        Volver a Transparencia
+        ${backLabel}
       </a>
-      <h1 class="text-2xl font-bold text-gray-900 mb-1">
-        Concesiones de ${escapeHtml(displayName)}
-      </h1>
-      <p class="text-sm text-gray-500">
-        NIF/CIF: ${escapeHtml(nifCif)}${anio ? ` · Año ${anio}` : ' · Todos los años'}
-      </p>
+      <h1 class="text-2xl font-bold text-gray-900 mb-1">${title}</h1>
+      <p class="text-sm text-gray-500">${subtitle}</p>
     </div>
   `
 }

@@ -280,6 +280,12 @@ async def search_concesiones(params: dict[str, Any]) -> dict[str, Any]:
     if params.get("pageSize"):
         bdns_params["pageSize"] = params["pageSize"]
 
+    if params.get("order"):
+        bdns_params["order"] = params["order"]
+
+    if params.get("direccion"):
+        bdns_params["direccion"] = params["direccion"]
+
     key = _cache_key("concesiones", bdns_params)
 
     cached = cache.get(key)

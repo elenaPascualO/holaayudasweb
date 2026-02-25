@@ -13,7 +13,8 @@ import { renderSearchPage } from './pages/search.js'
 import { renderDetailPage } from './pages/detail.js'
 import { renderTransparenciaPage } from './pages/transparencia.js'
 import { renderConcesionesPage } from './pages/concesiones.js'
-import { getGrantDetailCached, getConcesionesByGrant, searchConcesiones, submitFeedback } from './utils/api.js'
+import { renderContactoPage } from './pages/contacto.js'
+import { getGrantDetailCached, getConcesionesCount, searchConcesiones, submitFeedback } from './utils/api.js'
 import { getGrantStatus } from './utils/dates.js'
 import { createStatusBadge } from './components/StatusBadge.js'
 import { formatCurrency } from './utils/formatters.js'
@@ -48,41 +49,6 @@ function createFooter() {
   return `
     <footer class="border-t border-gray-100 mt-12 py-6">
       <div class="max-w-5xl mx-auto px-4 text-center">
-        <p class="text-xs text-gray-400 mb-3">
-          <button id="feedback-toggle" class="text-primary hover:underline cursor-pointer">
-            Sugerencias o problemas? Escribenos
-          </button>
-        </p>
-        <div id="feedback-form-wrapper" class="hidden max-w-sm mx-auto mb-4">
-          <form id="feedback-form" class="text-left space-y-2">
-            <input
-              type="email"
-              name="email"
-              placeholder="Email (opcional)"
-              class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg
-                     focus:outline-none focus:border-primary"
-            />
-            <textarea
-              name="message"
-              required
-              maxlength="2000"
-              rows="3"
-              placeholder="Tu mensaje..."
-              class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg
-                     focus:outline-none focus:border-primary resize-none"
-            ></textarea>
-            <div class="flex items-center gap-2">
-              <button
-                type="submit"
-                class="px-4 py-1.5 text-xs font-medium bg-primary text-white rounded-lg
-                       hover:bg-primary-dark transition-colors"
-              >
-                Enviar
-              </button>
-              <span id="feedback-status" class="text-xs text-gray-400"></span>
-            </div>
-          </form>
-        </div>
         <p class="text-xs text-gray-400">
           Los resultados se obtienen en tiempo real de
           <a href="https://www.infosubvenciones.es" target="_blank" rel="noopener noreferrer"
@@ -93,12 +59,10 @@ function createFooter() {
           Hola Ayudas es solo una interfaz mas amigable para consultar los datos oficiales.
         </p>
         <p class="text-xs text-gray-300 mt-1">
-          Un proyecto de HolaDatos ·
-          <a href="https://x.com/hola_datos_es" target="_blank" rel="noopener noreferrer"
-             class="text-gray-400 hover:text-primary">X</a>
+          Un proyecto de
+          <a href="/contacto" data-link class="text-gray-400 hover:text-primary no-underline">HolaDatos</a>
           ·
-          <a href="https://www.linkedin.com/company/hola-datos/" target="_blank" rel="noopener noreferrer"
-             class="text-gray-400 hover:text-primary">LinkedIn</a>
+          <a href="/contacto" data-link class="text-gray-400 hover:text-primary no-underline">Contacto</a>
         </p>
       </div>
     </footer>
@@ -164,20 +128,7 @@ function setupEventListeners() {
     row.addEventListener('click', handleBeneficiaryDrillDown)
   })
 
-  // Feedback form toggle
-  const feedbackToggle = document.getElementById('feedback-toggle')
-  if (feedbackToggle) {
-    feedbackToggle.addEventListener('click', () => {
-      const wrapper = document.getElementById('feedback-form-wrapper')
-      if (wrapper) {
-        const wasHidden = wrapper.classList.contains('hidden')
-        wrapper.classList.toggle('hidden')
-        if (wasHidden) track(events.FEEDBACK_OPEN)
-      }
-    })
-  }
-
-  // Feedback form submission
+  // Feedback form submission (on contact page)
   const feedbackForm = document.getElementById('feedback-form')
   if (feedbackForm) {
     feedbackForm.addEventListener('submit', handleFeedbackSubmit)
@@ -407,11 +358,14 @@ async function handleLoadConcesiones(e) {
   btn.textContent = 'Cargando...'
   track(events.CONCESIONES_VIEW, { bdns: bdnsCode })
 
-  try {
-    const data = await getConcesionesByGrant(bdnsCode, 0, 20)
-    const items = data.content || []
+  const officialUrl = `https://www.infosubvenciones.es/bdnstrans/GE/es/convocatorias/${encodeURIComponent(bdnsCode)}/concesiones`
 
-    if (items.length === 0) {
+  // Quick probe with pageSize=1 and 8s timeout to detect massive datasets
+  try {
+    const probe = await getConcesionesCount(bdnsCode, 8000)
+    const total = probe.totalElements || 0
+
+    if (total === 0) {
       container.innerHTML = `
         <div class="text-sm text-gray-400 space-y-1">
           <p>No constan concesiones en la BDNS para esta convocatoria.</p>
@@ -421,78 +375,127 @@ async function handleLoadConcesiones(e) {
       return
     }
 
-    let html = createConcessionList(items)
-
-    // Show total count
-    const total = data.totalElements || items.length
-    html = `
-      <p class="text-xs text-gray-400 mb-2">${total} beneficiario${total !== 1 ? 's' : ''} registrado${total !== 1 ? 's' : ''}</p>
-      ${html}
-    `
-
-    // Load more button if there are more pages
-    if (data.totalPages > 1) {
-      html += `
+    // Too many individual beneficiaries — show count + official link instead of list
+    if (total > 10000) {
+      container.innerHTML = `
+        <div class="text-sm space-y-2">
+          <p class="text-gray-500">
+            Esta convocatoria tiene <strong>${total.toLocaleString('es-ES')}</strong> beneficiarios individuales registrados.
+            Debido al volumen, no es posible mostrar el listado completo aqui.
+          </p>
+          <a href="${officialUrl}" target="_blank" rel="noopener noreferrer"
+             class="inline-flex items-center gap-2 px-4 py-2 border border-primary text-primary font-medium
+                    rounded-lg hover:bg-primary hover:text-white transition-colors no-underline text-sm">
+            Consultar listado en la web oficial
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+            </svg>
+          </a>
+        </div>
+      `
+      return
+    }
+  } catch {
+    // Probe failed or timed out — assume massive dataset, redirect to official
+    container.innerHTML = `
+      <div class="text-sm space-y-2">
+        <p class="text-gray-500">
+          No se pudo obtener el listado de beneficiarios. Es posible que esta convocatoria tenga
+          un volumen muy elevado de concesiones y el servidor de la BDNS no pueda responder a tiempo.
+        </p>
+        <a href="${officialUrl}" target="_blank" rel="noopener noreferrer"
+           class="inline-flex items-center gap-2 px-4 py-2 border border-primary text-primary font-medium
+                  rounded-lg hover:bg-primary hover:text-white transition-colors no-underline text-sm">
+          Consultar listado en la web oficial
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+          </svg>
+        </a>
         <button
-          id="load-more-concesiones"
+          id="retry-concesiones"
           data-bdns-code="${bdnsCode}"
-          data-next-page="1"
-          data-total-pages="${data.totalPages}"
-          class="mt-3 w-full py-2 text-sm font-medium text-primary border border-primary/30
-                 rounded-lg hover:bg-primary/5 transition-colors cursor-pointer"
+          class="inline-flex items-center gap-2 px-4 py-2 border border-primary text-primary font-medium
+                 rounded-lg hover:bg-primary hover:text-white transition-colors text-sm cursor-pointer"
         >
-          Ver mas beneficiarios
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Reintentar
         </button>
+      </div>
+    `
+    const retryBtn = document.getElementById('retry-concesiones')
+    if (retryBtn) {
+      retryBtn.addEventListener('click', handleLoadConcesiones)
+    }
+    return
+  }
+
+  // Probe passed and total <= 10000 — load top 10 by amount
+  btn.textContent = 'Cargando beneficiarios...'
+  const slowTimer = setTimeout(() => {
+    const slowMsg = document.getElementById('concesiones-slow-msg')
+    if (!slowMsg) {
+      btn.insertAdjacentHTML('afterend', `
+        <p id="concesiones-slow-msg" class="text-xs text-amber-600 mt-2">
+          La BDNS esta tardando en responder. Esto es normal cuando hay muchos beneficiarios, ten paciencia...
+        </p>
+      `)
+    }
+  }, 4000)
+
+  try {
+    const data = await searchConcesiones({ bdnsCode, page: 0, pageSize: 10, order: 'importe', direccion: 'desc' })
+    clearTimeout(slowTimer)
+    const items = data.content || []
+    const total = data.totalElements || items.length
+
+    let html = `
+      <p class="text-xs text-gray-400 mb-2">${total} beneficiario${total !== 1 ? 's' : ''} registrado${total !== 1 ? 's' : ''}</p>
+    `
+    html += createConcessionList(items)
+
+    // "Ver todos" link to full paginated page when there are more than shown
+    if (total > 10) {
+      html += `
+        <a href="/concesiones?bdnsCode=${encodeURIComponent(bdnsCode)}" data-link
+           class="mt-3 w-full py-2 text-sm font-medium text-primary border border-primary/30
+                  rounded-lg hover:bg-primary/5 transition-colors cursor-pointer flex items-center justify-center gap-1 no-underline">
+          Ver todos los ${total.toLocaleString('es-ES')} beneficiarios
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </a>
       `
     }
 
     container.innerHTML = html
-
-    // Wire up "load more" if present
-    const loadMoreBtn = document.getElementById('load-more-concesiones')
-    if (loadMoreBtn) {
-      loadMoreBtn.addEventListener('click', handleLoadMoreConcesiones)
-    }
   } catch {
+    clearTimeout(slowTimer)
     container.innerHTML = `
-      <p class="text-sm text-gray-400">Error al cargar las concesiones. Intentalo de nuevo.</p>
+      <div class="text-sm space-y-2">
+        <p class="text-gray-500">No se pudieron cargar los beneficiarios. Esto suele deberse a que el servidor de la BDNS (infosubvenciones.es) tarda en responder.</p>
+        <button
+          id="retry-concesiones"
+          data-bdns-code="${bdnsCode}"
+          class="inline-flex items-center gap-2 px-4 py-2 border border-primary text-primary font-medium
+                 rounded-lg hover:bg-primary hover:text-white transition-colors text-sm cursor-pointer"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Reintentar
+        </button>
+      </div>
     `
-  }
-}
-
-/**
- * Handle "Ver mas beneficiarios" — load next page of concesiones.
- */
-async function handleLoadMoreConcesiones(e) {
-  const btn = e.currentTarget
-  const bdnsCode = btn.dataset.bdnsCode
-  const nextPage = parseInt(btn.dataset.nextPage, 10)
-  const totalPages = parseInt(btn.dataset.totalPages, 10)
-
-  btn.disabled = true
-  btn.textContent = 'Cargando...'
-
-  try {
-    const data = await getConcesionesByGrant(bdnsCode, nextPage, 20)
-    const items = data.content || []
-
-    if (items.length > 0) {
-      // Insert new items before the button
-      const listHtml = createConcessionList(items)
-      btn.insertAdjacentHTML('beforebegin', listHtml)
+    const retryBtn = document.getElementById('retry-concesiones')
+    if (retryBtn) {
+      retryBtn.addEventListener('click', handleLoadConcesiones)
     }
-
-    // Update or remove the button
-    if (nextPage + 1 >= totalPages) {
-      btn.remove()
-    } else {
-      btn.dataset.nextPage = String(nextPage + 1)
-      btn.disabled = false
-      btn.textContent = 'Ver mas beneficiarios'
-    }
-  } catch {
-    btn.disabled = false
-    btn.textContent = 'Error — Reintentar'
   }
 }
 
@@ -554,7 +557,7 @@ async function handleBeneficiaryDrillDown(e) {
   // Read year filter from the ranking container to scope concesiones
   const rankingEl = document.getElementById('beneficiarios-ranking')
   const anio = rankingEl?.dataset.anio || ''
-  const concesionesParams = { nifCif, page: 0, pageSize: 5 }
+  const concesionesParams = { nifCif, page: 0, pageSize: 5, order: 'importe', direccion: 'desc' }
   if (anio) {
     concesionesParams.fechaDesde = `${anio}-01-01`
     concesionesParams.fechaHasta = `${anio}-12-31`
@@ -570,9 +573,6 @@ async function handleBeneficiaryDrillDown(e) {
       `
       return
     }
-
-    // Sort by amount descending
-    items.sort((a, b) => (b.importe || 0) - (a.importe || 0))
 
     const total = data.totalElements || items.length
     let html = `<p class="text-xs text-gray-400 mb-2">${total} concesion${total !== 1 ? 'es' : ''}</p>`
@@ -693,6 +693,11 @@ registerRoute('/ayuda/:bdnsCode', async (params) => {
   const html = await renderDetailPage(params.bdnsCode)
   render(html)
   track(events.DETAIL_VIEW, { bdns: params.bdnsCode })
+})
+
+registerRoute('/contacto', () => {
+  const html = renderContactoPage()
+  render(html)
 })
 
 // --- Start ---

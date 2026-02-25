@@ -125,6 +125,8 @@ function createPageHeader(years, selectedYear, nifCif, searchQuery = '') {
       </p>
       <p class="text-xs text-gray-400 mt-1">
         La BDNS solo publica datos de grandes beneficiarios desde 2022.
+        Las cifras suman todas las ayudas recibidas (subvenciones, prestamos, avales, rescates...),
+        por lo que una cifra alta no implica necesariamente un mismo tipo de ayuda.
       </p>
     </div>
 

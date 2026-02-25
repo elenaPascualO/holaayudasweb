@@ -10,10 +10,18 @@ const BASE = '/api'
 /**
  * Generic fetch wrapper with error handling.
  * @param {string} url - Full URL to fetch
+ * @param {Object} [options] - Fetch options
+ * @param {number} [options.timeout] - Timeout in milliseconds
  * @returns {Promise<any>} Parsed JSON response
  */
-async function fetchJson(url) {
-  const response = await fetch(url)
+async function fetchJson(url, options = {}) {
+  const fetchOptions = {}
+  if (options.timeout) {
+    const controller = new AbortController()
+    fetchOptions.signal = controller.signal
+    setTimeout(() => controller.abort(), options.timeout)
+  }
+  const response = await fetch(url, fetchOptions)
   if (!response.ok) {
     const text = await response.text().catch(() => 'Unknown error')
     throw new Error(`API error ${response.status}: ${text}`)
@@ -92,6 +100,20 @@ export async function getGrantDetailCached(bdnsCode) {
  */
 export async function getConcesionesByGrant(bdnsCode, page = 0, pageSize = 20) {
   return fetchJson(`${BASE}/concesiones${buildQuery({ bdnsCode, page, pageSize })}`)
+}
+
+/**
+ * Quick probe to get totalElements for a grant's concessions.
+ * Uses a short timeout to fail fast for massive datasets.
+ * @param {string} bdnsCode - BDNS convocatoria code
+ * @param {number} [timeout=8000] - Timeout in ms
+ * @returns {Promise<Object>} Paginated response (1 item)
+ */
+export async function getConcesionesCount(bdnsCode, timeout = 8000) {
+  return fetchJson(
+    `${BASE}/concesiones${buildQuery({ bdnsCode, page: 0, pageSize: 1 })}`,
+    { timeout }
+  )
 }
 
 /**

@@ -3,8 +3,9 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 try:
@@ -62,7 +63,17 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "holaayudas-api"}
 
 
-# Mount frontend static files (must be last, so API routes take priority)
+# Serve frontend static files and SPA fallback (must be last, so API routes take priority)
 frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
 if frontend_dist.exists():
-    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+    # Mount static assets (JS, CSS, images, etc.)
+    app.mount("/assets", StaticFiles(directory=frontend_dist / "assets"), name="static-assets")
+
+    # Serve known static files at root (favicon, robots.txt, sitemap, etc.)
+    @app.get("/{filename:path}")
+    async def spa_fallback(request: Request, filename: str) -> FileResponse:
+        """Serve static files if they exist, otherwise fallback to index.html for SPA routing."""
+        file_path = frontend_dist / filename
+        if filename and file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(frontend_dist / "index.html")
