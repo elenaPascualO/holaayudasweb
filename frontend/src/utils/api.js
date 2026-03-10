@@ -152,6 +152,80 @@ export async function getTopBeneficiariesYears() {
 }
 
 /**
+ * Semantic search grants using natural language.
+ * @param {Object} params - Search parameters
+ * @param {string} [params.q] - Natural language query
+ * @param {number} [params.topK] - Max results
+ * @param {number} [params.yearFrom] - Start year filter
+ * @param {number} [params.yearTo] - End year filter
+ * @param {boolean} [params.abierto] - Open status filter
+ * @returns {Promise<Object>} Paginated results
+ */
+export async function semanticSearch(params = {}) {
+  return fetchJson(`${BASE}/search${buildQuery(params)}`)
+}
+
+/**
+ * Get analytics summary statistics.
+ * @returns {Promise<Object>}
+ */
+export async function fetchAnalyticsSummary() {
+  return fetchJson(`${BASE}/analytics/summary`)
+}
+
+/**
+ * Get convocatorias count by year.
+ * @returns {Promise<Array>}
+ */
+export async function fetchAnalyticsByYear() {
+  return fetchJson(`${BASE}/analytics/by-year`)
+}
+
+/**
+ * Get monthly trend for a year.
+ * @param {number} year
+ * @returns {Promise<Array>}
+ */
+export async function fetchAnalyticsMonthlyTrend(year) {
+  return fetchJson(`${BASE}/analytics/monthly-trend?year=${year}`)
+}
+
+/**
+ * Get convocatorias by theme.
+ * @param {Object} [params] - { yearFrom, yearTo, limit }
+ * @returns {Promise<Array>}
+ */
+export async function fetchAnalyticsByTheme(params = {}) {
+  return fetchJson(`${BASE}/analytics/by-theme${buildQuery(params)}`)
+}
+
+/**
+ * Get convocatorias by region.
+ * @param {Object} [params] - { yearFrom, yearTo, limit }
+ * @returns {Promise<Array>}
+ */
+export async function fetchAnalyticsByRegion(params = {}) {
+  return fetchJson(`${BASE}/analytics/by-region${buildQuery(params)}`)
+}
+
+/**
+ * Get top convocante organisms.
+ * @param {Object} [params] - { yearFrom, yearTo, limit }
+ * @returns {Promise<Array>}
+ */
+export async function fetchAnalyticsTopOrgans(params = {}) {
+  return fetchJson(`${BASE}/analytics/top-organs${buildQuery(params)}`)
+}
+
+/**
+ * Get open vs closed status counts.
+ * @returns {Promise<Object>}
+ */
+export async function fetchAnalyticsStatus() {
+  return fetchJson(`${BASE}/analytics/status`)
+}
+
+/**
  * Submit user feedback.
  * @param {Object} data - { email?: string, message: string }
  * @returns {Promise<Object>} Response

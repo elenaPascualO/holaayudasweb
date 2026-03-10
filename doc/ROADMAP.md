@@ -104,7 +104,7 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 ### Pendiente para futuras fases
 - [x] Pagina standalone de concesiones por beneficiario (`/concesiones`)
 - [x] Busqueda por NIF/CIF del beneficiario
-- [ ] Descarga de documentos de convocatoria (PDF passthrough)
+- [x] Visor de documentos de convocatoria (PDF inline via proxy)
 - [ ] Paginacion mejorada (scroll infinito o paginacion numerada)
 
 ---
@@ -113,7 +113,7 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 
 **Objetivo:** Añadir funcionalidades de interes publico y trafico organico.
 
-**Estado:** En progreso (Febrero 2026)
+**Estado:** Completada (Febrero 2026)
 
 ### Transparencia
 - [x] Vista de grandes beneficiarios (`/transparencia`)
@@ -137,7 +137,52 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 
 ---
 
-## Fase 3 — Experiencia de Usuario
+## Fase 3 — Replica Local + Busqueda Semantica + Analytics
+
+**Objetivo:** Independizarse de BDNS para busquedas, habilitar busqueda semantica con IA y analytics sobre los datos.
+
+**Estado:** Completada (Marzo 2026)
+
+**Detalle:** Ver `doc/KILLER_PLAN.md` para el plan completo (fases 1-3 del killer plan).
+
+### Replica Local de Convocatorias
+- [x] SQLite database (`data/convocatorias.db`) con ~610K convocatorias
+- [x] Schema: tabla `convocatorias` + FTS5 + `conv_sync_metadata`
+- [x] Script de sincronizacion (`sync_convocatorias.py`) con 4 modos:
+  - `daily` — sync incremental + backfill detalle + embeddings
+  - `full-list` — carga historica completa
+  - `backfill-detail` — fetch detalle para registros sin el
+  - `backfill-embeddings` — generar embeddings para registros con detalle
+- [x] Admin endpoint: `POST /api/admin/sync/convocatorias?mode=daily`
+- [x] Sync en background (`asyncio.create_task`) — POST retorna inmediatamente
+- [x] Endpoint de estado: `GET /api/admin/sync/convocatorias/status` (progreso en tiempo real)
+- [x] Cancelacion limpia del sync en shutdown del app
+- [x] Detalle servido desde SQLite local → fallback a BDNS proxy
+- [x] `init_convocatorias_db()` en app startup
+
+### Busqueda Semantica
+- [x] Embeddings con OpenAI `text-embedding-3-small` (1536 dims)
+- [x] Almacenados como BLOBs en SQLite (`embedding` column)
+- [x] Busqueda hibrida: FTS5 pre-filtro (500 candidatos) → coseno re-rank con numpy
+- [x] Endpoint: `GET /api/search?q=...&topK=20&yearFrom=&yearTo=&abierto=`
+- [x] Fallback: si pocas coincidencias FTS → amplia con embeddings recientes
+- [x] Frontend: `/buscar` usa busqueda semantica cuando `q` esta presente
+
+### Dashboard de Analytics
+- [x] 7 endpoints bajo `/api/analytics/*` con cache 1h
+- [x] Pagina `/datos` con Chart.js v4 (CDN)
+- [x] Graficos: por año (barras), tendencia mensual (linea), por tematica (barras H), por region (barras H), estado (donut)
+- [x] Tabla: top 10 organismos convocantes
+- [x] Tarjetas resumen: total, presupuesto total, abiertas, presupuesto medio
+- [x] Graficos clickeables (navegan a busqueda filtrada)
+
+### Dependencias Añadidas
+- [x] `openai>=1.0.0` — embeddings
+- [x] `numpy>=1.26.0` — cosine similarity vectorial
+
+---
+
+## Fase 4 — Experiencia de Usuario
 
 **Objetivo:** Pulir y añadir funcionalidades de retencion.
 
@@ -150,7 +195,7 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 
 ---
 
-## Fase 4 — Integracion con HolaDatos
+## Fase 5 — Integracion con HolaDatos
 
 **Objetivo:** Integracion profunda con el ecosistema HolaDatos.
 
@@ -161,7 +206,7 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 
 ---
 
-## Fase 5 — Alertas y Notificaciones
+## Fase 6 — Alertas y Notificaciones
 
 **Objetivo:** Valor proactivo para los usuarios.
 
@@ -176,10 +221,10 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 
 | Fase | Estrategia |
 |------|------------|
-| 0-2 | 100% gratis. Prioridad: traccion y SEO |
-| 3+ | Donaciones / "Invitame a un cafe" |
-| 4+ | Alertas premium (email, Telegram) |
-| 5+ | Acceso API para integraciones |
+| 0-3 | 100% gratis. Prioridad: traccion, IA y SEO |
+| 4+ | Donaciones / "Invitame a un cafe" |
+| 5+ | Alertas premium (email, Telegram) |
+| 6+ | Acceso API para integraciones |
 
 ---
 
@@ -187,7 +232,7 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 
 1. **Simplicidad primero** — Cada funcionalidad debe funcionar sin explicacion
 2. **Velocidad** — Los resultados de busqueda deben sentirse instantaneos
-3. **Privacidad** — Sin datos de usuario almacenados, arquitectura solo-proxy
+3. **Privacidad** — Sin datos de usuario almacenados; replica local solo de datos publicos
 4. **Mobile-first** — La mayoria de usuarios vendran de HolaDatos (redes sociales → movil)
 5. **Iteracion rapida** — Lanzar, medir, ajustar
 6. **Respetar el upstream** — Cachear agresivamente para no sobrecargar los servidores del gobierno

@@ -59,6 +59,15 @@ BENEFICIARIOS_DB_PATH: str = os.getenv(
     str(Path(__file__).parent.parent / "data" / "beneficiarios.db"),
 )
 
+# SQLite database for convocatorias local replica
+CONVOCATORIAS_DB_PATH: str = os.getenv(
+    "CONVOCATORIAS_DB_PATH",
+    str(Path(__file__).parent.parent / "data" / "convocatorias.db"),
+)
+
+# OpenAI API key for embeddings
+OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+
 # Discord webhook for feedback notifications
 DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL", "")
 

@@ -14,6 +14,7 @@ import { renderDetailPage } from './pages/detail.js'
 import { renderTransparenciaPage } from './pages/transparencia.js'
 import { renderConcesionesPage } from './pages/concesiones.js'
 import { renderContactoPage } from './pages/contacto.js'
+import { renderAnalyticsPage, initAnalyticsCharts } from './pages/analytics.js'
 import { getGrantDetailCached, getConcesionesCount, searchConcesiones, submitFeedback } from './utils/api.js'
 import { getGrantStatus } from './utils/dates.js'
 import { createStatusBadge } from './components/StatusBadge.js'
@@ -127,6 +128,18 @@ function setupEventListeners() {
   app.querySelectorAll('[data-expand-beneficiary]').forEach((row) => {
     row.addEventListener('click', handleBeneficiaryDrillDown)
   })
+
+  // Semantic search filter form
+  const semanticFilterForm = document.getElementById('semantic-filter-form')
+  if (semanticFilterForm) {
+    semanticFilterForm.addEventListener('submit', handleSemanticFilterSubmit)
+  }
+
+  // Clear semantic filters
+  const clearSemanticBtn = document.getElementById('clear-semantic-filters')
+  if (clearSemanticBtn) {
+    clearSemanticBtn.addEventListener('click', handleClearSemanticFilters)
+  }
 
   // Feedback form submission (on contact page)
   const feedbackForm = document.getElementById('feedback-form')
@@ -605,6 +618,40 @@ async function handleBeneficiaryDrillDown(e) {
 }
 
 /**
+ * Handle semantic filter form submission.
+ */
+function handleSemanticFilterSubmit(e) {
+  e.preventDefault()
+  const formData = new FormData(e.target)
+  const params = new URLSearchParams()
+
+  // Preserve search query
+  const searchInput = document.getElementById('search-input')
+  const q = searchInput?.value.trim()
+  if (q) params.set('q', q)
+
+  const yearFrom = formData.get('yearFrom')
+  if (yearFrom) params.set('yearFrom', yearFrom)
+
+  const yearTo = formData.get('yearTo')
+  if (yearTo) params.set('yearTo', yearTo)
+
+  const abierto = formData.get('abierto')
+  if (abierto) params.set('abierto', abierto)
+
+  navigate(`/buscar?${params.toString()}`)
+}
+
+/**
+ * Handle clear semantic filters.
+ */
+function handleClearSemanticFilters() {
+  const currentParams = new URLSearchParams(window.location.search)
+  const q = currentParams.get('q')
+  navigate(q ? `/buscar?q=${encodeURIComponent(q)}` : '/buscar')
+}
+
+/**
  * Handle clear filters button.
  */
 function handleClearFilters() {
@@ -693,6 +740,13 @@ registerRoute('/ayuda/:bdnsCode', async (params) => {
   const html = await renderDetailPage(params.bdnsCode)
   render(html)
   track(events.DETAIL_VIEW, { bdns: params.bdnsCode })
+})
+
+registerRoute('/datos', async (params) => {
+  renderLoading()
+  const html = await renderAnalyticsPage(params)
+  render(html)
+  initAnalyticsCharts()
 })
 
 registerRoute('/contacto', () => {

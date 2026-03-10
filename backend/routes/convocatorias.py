@@ -1,5 +1,7 @@
 """Grant (convocatoria) routes."""
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
@@ -11,6 +13,9 @@ from backend.services.bdns_client import (
     search_convocatorias,
     search_convocatorias_enriched,
 )
+from backend.services.convocatorias_db import get_convocatoria_detail_local
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["convocatorias"])
 
@@ -147,7 +152,19 @@ async def get_document(doc_id: str) -> StreamingResponse:
 
 @router.get("/convocatorias/{bdns_code}")
 async def grant_detail(bdns_code: str) -> dict:
-    """Get full detail of a specific grant by BDNS code."""
+    """Get full detail of a specific grant by BDNS code.
+
+    Tries local SQLite first (fast, no API call), falls back to BDNS proxy.
+    """
+    # Try local SQLite first
+    try:
+        local = get_convocatoria_detail_local(bdns_code)
+        if local is not None:
+            return local
+    except Exception:
+        logger.warning("SQLite detail lookup failed for %s, falling back to BDNS", bdns_code)
+
+    # Fallback to BDNS API proxy
     try:
         return await get_convocatoria_detail(bdns_code)
     except BDNSError as e:

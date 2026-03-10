@@ -270,6 +270,65 @@ function createCatalogSelect(name, label, options, selectedValue) {
   `
 }
 
+/**
+ * Simplified filter panel for semantic search (inline, not sidebar).
+ * Only shows year range and open/closed status.
+ * @param {Object} currentFilters - { yearFrom, yearTo, abierto }
+ * @returns {string} HTML
+ */
+export function createSemanticFilterPanel(currentFilters = {}) {
+  const currentYear = new Date().getFullYear()
+  const hasFilters = !!(currentFilters.yearFrom || currentFilters.yearTo || currentFilters.abierto)
+
+  let yearOptions = '<option value="">Todos</option>'
+  for (let y = currentYear; y >= FIRST_YEAR; y--) {
+    yearOptions += `<option value="${y}">${y}</option>`
+  }
+
+  return `
+    <form id="semantic-filter-form" class="flex flex-wrap items-center gap-3">
+      <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Filtros:</span>
+
+      <select name="yearFrom" class="px-2 py-1.5 text-sm border border-gray-200 rounded-lg
+                 focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary">
+        ${yearOptions.replace(
+          `value="${currentFilters.yearFrom || ''}"`,
+          `value="${currentFilters.yearFrom || ''}" selected`
+        )}
+      </select>
+
+      <span class="text-xs text-gray-400">a</span>
+
+      <select name="yearTo" class="px-2 py-1.5 text-sm border border-gray-200 rounded-lg
+                 focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary">
+        ${yearOptions.replace(
+          `value="${currentFilters.yearTo || ''}"`,
+          `value="${currentFilters.yearTo || ''}" selected`
+        )}
+      </select>
+
+      <select name="abierto" class="px-2 py-1.5 text-sm border border-gray-200 rounded-lg
+                 focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary">
+        <option value="">Todas</option>
+        <option value="true" ${currentFilters.abierto === 'true' ? 'selected' : ''}>Abiertas</option>
+        <option value="false" ${currentFilters.abierto === 'false' ? 'selected' : ''}>Cerradas</option>
+      </select>
+
+      <button type="submit" class="px-3 py-1.5 text-sm font-medium text-white bg-primary rounded-lg
+                 hover:bg-primary-dark transition-colors cursor-pointer">
+        Filtrar
+      </button>
+
+      ${hasFilters ? `
+        <button type="button" id="clear-semantic-filters"
+                class="text-xs text-primary hover:underline cursor-pointer">
+          Limpiar
+        </button>
+      ` : ''}
+    </form>
+  `
+}
+
 function createRegionSelect(id, wrapperId, label, options, selectedValue, visible) {
   if (options.length === 0) return `<div id="${wrapperId}" class="hidden"></div>`
   return `

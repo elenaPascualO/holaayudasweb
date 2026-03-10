@@ -1,13 +1,11 @@
 /**
- * Search results page with filters and pagination.
+ * Search results page with semantic search and simplified filters.
  */
 
-import { searchGrants } from '../utils/api.js'
-import { COMMUNITIES, PROVINCES } from '../utils/regionCache.js'
-import { getCatalogs } from '../utils/catalogCache.js'
+import { semanticSearch, searchGrants } from '../utils/api.js'
 import { createSearchBar, createQuickFilters } from '../components/SearchBar.js'
 import { createGrantList } from '../components/GrantList.js'
-import { createFilterPanel } from '../components/FilterPanel.js'
+import { createSemanticFilterPanel } from '../components/FilterPanel.js'
 import { createPagination } from '../components/Pagination.js'
 import { createEmptyState } from '../components/EmptyState.js'
 import { formatNumber } from '../utils/formatters.js'
@@ -22,40 +20,54 @@ export async function renderSearchPage(params) {
   const page = parseInt(params.page || '0', 10)
   const pageSize = parseInt(params.pageSize || '20', 10)
 
-  // Default fechaDesde to 1st of current month
-  const now = new Date()
-  const defaultFechaDesde = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-  const fechaDesde = params.fechaDesde ?? defaultFechaDesde
+  // Determine if we should use semantic search or legacy BDNS search
+  const useSemanticSearch = !!q
 
-  const catalogs = await getCatalogs()
+  const currentFilters = {
+    yearFrom: params.yearFrom,
+    yearTo: params.yearTo,
+    abierto: params.abierto,
+  }
 
   let results
   try {
-    results = await searchGrants({
-      q,
-      page,
-      pageSize,
-      fechaDesde,
-      fechaHasta: params.fechaHasta,
-      tipoAdministracion: params.tipoAdministracion,
-      regiones: params.regiones,
-      orden: params.orden,
-      estado: params.estado,
-      instrumentos: params.instrumentos,
-      tiposBeneficiario: params.tiposBeneficiario,
-      finalidad: params.finalidad,
-    })
+    if (useSemanticSearch) {
+      results = await semanticSearch({
+        q,
+        topK: pageSize,
+        yearFrom: params.yearFrom,
+        yearTo: params.yearTo,
+        abierto: params.abierto === 'true' ? true : params.abierto === 'false' ? false : undefined,
+      })
+    } else {
+      // No query — fall back to legacy BDNS search for browsing
+      const now = new Date()
+      const defaultFechaDesde = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+      const fechaDesde = params.fechaDesde ?? defaultFechaDesde
+
+      results = await searchGrants({
+        q: '',
+        page,
+        pageSize,
+        fechaDesde,
+        fechaHasta: params.fechaHasta,
+        tipoAdministracion: params.tipoAdministracion,
+        regiones: params.regiones,
+        orden: params.orden,
+        estado: params.estado,
+        instrumentos: params.instrumentos,
+        tiposBeneficiario: params.tiposBeneficiario,
+        finalidad: params.finalidad,
+      })
+    }
   } catch {
     return `
       ${createSearchBar(q)}
       ${createQuickFilters()}
 
-      <div class="mt-6 flex flex-col md:flex-row gap-6">
-        <aside class="md:w-60 shrink-0 order-2 md:order-1">
-          ${createFilterPanel({ ...params, fechaDesde }, { communities: COMMUNITIES, provinces: PROVINCES }, catalogs)}
-        </aside>
-
-        <div class="flex-1 order-1 md:order-2">
+      <div class="mt-6">
+        ${createSemanticFilterPanel(currentFilters)}
+        <div class="mt-4">
           ${createEmptyState(
             'Error al buscar',
             'No se pudo conectar con el servidor. Intentalo de nuevo.'
@@ -70,55 +82,62 @@ export async function renderSearchPage(params) {
       ${createSearchBar(q)}
       ${createQuickFilters()}
 
-      <div class="mt-6 flex flex-col md:flex-row gap-6">
-        <aside class="md:w-60 shrink-0 order-2 md:order-1">
-          ${createFilterPanel({ ...params, fechaDesde }, { communities: COMMUNITIES, provinces: PROVINCES }, catalogs)}
-        </aside>
-
-        <div class="flex-1 order-1 md:order-2">
-          ${createEmptyState()}
+      <div class="mt-6">
+        ${createSemanticFilterPanel(currentFilters)}
+        <div class="mt-4">
+          ${createEmptyState(
+            q ? 'Sin resultados' : undefined,
+            q ? `No se encontraron ayudas para "${q}". Prueba con otros terminos.` : undefined,
+          )}
         </div>
       </div>
     `
   }
 
-  // Build base URL for pagination (preserving all filters)
+  // Build base URL for pagination (preserving filters)
   const baseParams = new URLSearchParams()
   if (q) baseParams.set('q', q)
-  if (fechaDesde) baseParams.set('fechaDesde', fechaDesde)
-  if (params.fechaHasta) baseParams.set('fechaHasta', params.fechaHasta)
-  if (params.tipoAdministracion) baseParams.set('tipoAdministracion', params.tipoAdministracion)
-  if (params.regiones) baseParams.set('regiones', params.regiones)
-  if (params.orden) baseParams.set('orden', params.orden)
-  if (params.estado) baseParams.set('estado', params.estado)
-  if (params.instrumentos) baseParams.set('instrumentos', params.instrumentos)
-  if (params.tiposBeneficiario) baseParams.set('tiposBeneficiario', params.tiposBeneficiario)
-  if (params.finalidad) baseParams.set('finalidad', params.finalidad)
+  if (params.yearFrom) baseParams.set('yearFrom', params.yearFrom)
+  if (params.yearTo) baseParams.set('yearTo', params.yearTo)
+  if (params.abierto) baseParams.set('abierto', params.abierto)
+  // Legacy filter params (for non-semantic search)
+  if (!useSemanticSearch) {
+    if (params.fechaDesde) baseParams.set('fechaDesde', params.fechaDesde)
+    if (params.fechaHasta) baseParams.set('fechaHasta', params.fechaHasta)
+    if (params.tipoAdministracion) baseParams.set('tipoAdministracion', params.tipoAdministracion)
+    if (params.regiones) baseParams.set('regiones', params.regiones)
+    if (params.orden) baseParams.set('orden', params.orden)
+    if (params.estado) baseParams.set('estado', params.estado)
+  }
   const baseUrl = `/buscar?${baseParams.toString()}`
+
+  // Check if results have relevance scores
+  const hasScores = results.content.some(r => r._score != null)
 
   return `
     ${createSearchBar(q)}
     ${createQuickFilters()}
 
-    <div class="mt-6 flex flex-col md:flex-row gap-6">
-      <aside class="md:w-60 shrink-0 order-2 md:order-1">
-        ${createFilterPanel({ ...params, fechaDesde }, { communities: COMMUNITIES, provinces: PROVINCES }, catalogs)}
-      </aside>
+    <div class="mt-6">
+      ${createSemanticFilterPanel(currentFilters)}
 
-      <div class="flex-1 order-1 md:order-2">
+      <div class="mt-4">
         <div class="flex items-center justify-between mb-4">
           <p class="text-sm text-gray-400">
             ${formatNumber(results.totalElements)} resultados
             ${q ? ` para "${q}"` : ''}
+            ${hasScores ? ' <span class="text-primary/60">· ordenados por relevancia</span>' : ''}
           </p>
-          <select
-            id="sort-select"
-            class="text-sm text-gray-500 border border-gray-200 rounded-lg px-2 py-1
-                   focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary"
-          >
-            <option value="desc" ${(params.orden || 'desc') === 'desc' ? 'selected' : ''}>Mas recientes</option>
-            <option value="asc" ${params.orden === 'asc' ? 'selected' : ''}>Mas antiguas</option>
-          </select>
+          ${!useSemanticSearch ? `
+            <select
+              id="sort-select"
+              class="text-sm text-gray-500 border border-gray-200 rounded-lg px-2 py-1
+                     focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary"
+            >
+              <option value="desc" ${(params.orden || 'desc') === 'desc' ? 'selected' : ''}>Mas recientes</option>
+              <option value="asc" ${params.orden === 'asc' ? 'selected' : ''}>Mas antiguas</option>
+            </select>
+          ` : ''}
         </div>
 
         ${createGrantList(results.content)}

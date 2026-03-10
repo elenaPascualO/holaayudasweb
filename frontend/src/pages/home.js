@@ -1,16 +1,22 @@
 /**
- * Homepage: latest grants with filters and pagination.
+ * Homepage: search-first with semantic search + latest grants.
  */
 
 import { getLatestGrants } from '../utils/api.js'
-import { COMMUNITIES, PROVINCES } from '../utils/regionCache.js'
-import { getCatalogs } from '../utils/catalogCache.js'
-import { createSearchBar, createQuickFilters } from '../components/SearchBar.js'
+import { createSearchBar } from '../components/SearchBar.js'
 import { createGrantList } from '../components/GrantList.js'
-import { createFilterPanel } from '../components/FilterPanel.js'
 import { createPagination } from '../components/Pagination.js'
 import { createEmptyState } from '../components/EmptyState.js'
 import { formatNumber } from '../utils/formatters.js'
+
+const EXAMPLE_SEARCHES = [
+  { label: 'Digitalización pymes', query: 'ayudas digitalización pymes' },
+  { label: 'Becas investigación', query: 'becas investigación universitaria' },
+  { label: 'Vivienda joven', query: 'ayudas vivienda jovenes' },
+  { label: 'Agricultura sostenible', query: 'subvenciones agricultura sostenible' },
+  { label: 'Energías renovables', query: 'ayudas energía renovable' },
+  { label: 'Empleo autónomos', query: 'ayudas empleo autónomos' },
+]
 
 /**
  * Render the homepage.
@@ -20,15 +26,13 @@ import { formatNumber } from '../utils/formatters.js'
 export async function renderHomePage(params = {}) {
   const page = parseInt(params.page || '0', 10)
 
-  const catalogs = await getCatalogs()
-
   let results
   try {
     results = await getLatestGrants(page, 20)
   } catch {
     return `
       ${createSearchBar()}
-      ${createQuickFilters()}
+      ${createExampleChips()}
       ${createEmptyState(
         'Error al cargar',
         'No se pudieron cargar las ultimas ayudas. Intentalo de nuevo.'
@@ -39,36 +43,49 @@ export async function renderHomePage(params = {}) {
   if (!results.content || results.content.length === 0) {
     return `
       ${createSearchBar()}
-      ${createQuickFilters()}
+      ${createExampleChips()}
       ${createEmptyState()}
     `
   }
 
   return `
     ${createSearchBar()}
-    ${createQuickFilters()}
+    ${createExampleChips()}
 
-    <div class="mt-6 flex flex-col md:flex-row gap-6">
-      <aside class="md:w-60 shrink-0 order-2 md:order-1">
-        ${createFilterPanel({}, { communities: COMMUNITIES, provinces: PROVINCES }, catalogs)}
-      </aside>
-
-      <div class="flex-1 order-1 md:order-2">
-        <div class="flex items-center justify-between mb-4">
-          <p class="text-sm text-gray-400">
-            ${formatNumber(results.totalElements)} ayudas publicadas
-          </p>
-        </div>
-
-        ${createGrantList(results.content)}
-
-        ${createPagination(
-          results.number,
-          results.totalPages,
-          results.totalElements,
-          '/',
-        )}
+    <div class="mt-6">
+      <div class="flex items-center justify-between mb-4">
+        <p class="text-sm text-gray-400">
+          ${formatNumber(results.totalElements)} ayudas publicadas
+        </p>
       </div>
+
+      ${createGrantList(results.content)}
+
+      ${createPagination(
+        results.number,
+        results.totalPages,
+        results.totalElements,
+        '/',
+      )}
+    </div>
+  `
+}
+
+/**
+ * Create example search chips for semantic search.
+ * @returns {string} HTML
+ */
+function createExampleChips() {
+  return `
+    <div class="mt-4 flex flex-wrap gap-2">
+      <span class="text-xs text-gray-400 self-center mr-1">Prueba:</span>
+      ${EXAMPLE_SEARCHES.map(({ label, query }) => `
+        <button data-filter="${query}"
+                class="px-3 py-1 rounded-full text-xs font-medium bg-primary/5 text-primary
+                       hover:bg-primary/10 transition-colors cursor-pointer">
+          ${label}
+        </button>
+      `).join('')}
     </div>
   `
 }

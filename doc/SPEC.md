@@ -3,7 +3,7 @@
 ## 1. Resumen
 
 **Nombre del producto:** Hola Ayudas
-**Version:** 0.1.0 (Fase 0 - MVP)
+**Version:** 0.3.0 (Fase 3 - Replica Local + Semantica + Analytics)
 **Proposito:** Interfaz web moderna y user-friendly para buscar ayudas y subvenciones publicas españolas a traves de la API publica de BDNS.
 
 ### 1.1 Vision
@@ -13,7 +13,7 @@ Ofrecer una forma rapida, bonita e intuitiva de buscar y explorar ayudas y subve
 Los enlaces de Hola Ayudas se incluiran en las publicaciones de HolaDatos sobre ayudas, permitiendo a los usuarios buscar y explorar convocatorias relacionadas con una experiencia superior.
 
 ### 1.3 Estado Actual
-Fase 0 (MVP) - Implementada. Backend y frontend funcionales. Pendiente despliegue en produccion. Ver `doc/ROADMAP.md` para detalle de fases.
+Fase 3 completada. Replica local de convocatorias en SQLite, busqueda semantica con embeddings OpenAI, y dashboard de analytics con Chart.js. Ver `doc/ROADMAP.md` para detalle de fases y `doc/KILLER_PLAN.md` para el plan de replica + IA.
 
 ---
 
@@ -156,13 +156,22 @@ Campos de respuesta por item:
 ### 3.1 Diagrama de Arquitectura
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────┐
-│                 │     │                  │     │                     │
-│   Frontend      │────▶│   Backend/Proxy  │────▶│  API BDNS           │
-│   Bun + Vite    │     │   Python/FastAPI  │     │  infosubvenciones   │
-│   Tailwind CSS  │     │   + Cache en      │     │                     │
-│   Vanilla JS    │     │     memoria       │     │                     │
-└─────────────────┘     └──────────────────┘     └─────────────────────┘
+┌─────────────────┐     ┌──────────────────────┐     ┌──────────────────┐
+│                 │     │                      │     │                  │
+│   Frontend      │────▶│   Backend/Proxy      │────▶│  API BDNS        │
+│   Bun + Vite    │     │   Python/FastAPI      │     │  infosubvenciones│
+│   Tailwind CSS  │     │   + Cache en memoria  │     │                  │
+│   Vanilla JS    │     │   + SQLite local      │     │                  │
+│   Chart.js      │     │   + OpenAI embeddings │     │                  │
+└─────────────────┘     └───────────┬──────────┘     └──────────────────┘
+                                    │
+                        ┌───────────▼──────────┐
+                        │  SQLite databases    │
+                        │  ├── beneficiarios.db│
+                        │  └── convocatorias.db│
+                        │      + FTS5 index    │
+                        │      + embeddings    │
+                        └──────────────────────┘
 ```
 
 ### 3.2 Stack Tecnologico
@@ -179,6 +188,9 @@ Campos de respuesta por item:
 | Backend Package Manager | uv |
 | Backend Cliente HTTP | httpx |
 | Backend Testing | pytest + httpx |
+| Base de datos | SQLite (FTS5 + embeddings BLOB) |
+| Embeddings | OpenAI text-embedding-3-small (1536 dims) |
+| Vector ops | numpy (cosine similarity) |
 | Deploy | Railway |
 
 ### 3.3 API del Proxy Backend
@@ -195,7 +207,7 @@ El backend actua como proxy transparente con cache. Transforma las respuestas de
 |-----------------|----------|-----------|
 | `GET /api/convocatorias` | `/convocatorias/busqueda` | 5 min |
 | `GET /api/convocatorias/ultimas` | `/convocatorias/ultimas` | 5 min |
-| `GET /api/convocatorias/:id` | `/convocatorias?numConv=X` | 1 hora |
+| `GET /api/convocatorias/:id` | SQLite local → fallback `/convocatorias?numConv=X` | 1 hora |
 | `GET /api/concesiones` | `/concesiones/busqueda` | 5 min |
 | `GET /api/beneficiarios-top` | `/grandesbeneficiarios/busqueda` o SQLite FTS5 (si `q` presente) | 1 hora |
 | `GET /api/catalogo/regiones` | `/regiones` | 24 horas |
@@ -205,6 +217,21 @@ El backend actua como proxy transparente con cache. Transforma las respuestas de
 | `GET /api/catalogo/beneficiarios` | `/beneficiarios?vpd=GE` | 24 horas |
 | `POST /api/feedback` | - (local + Discord webhook) | - |
 | `GET /api/health` | - | - |
+
+#### Endpoints Propios (sin upstream)
+
+| Endpoint | Fuente | Cache TTL |
+|----------|--------|-----------|
+| `GET /api/search` | SQLite FTS5 + OpenAI embeddings | - |
+| `GET /api/analytics/summary` | SQLite convocatorias | 1 hora |
+| `GET /api/analytics/by-year` | SQLite convocatorias | 1 hora |
+| `GET /api/analytics/monthly-trend` | SQLite convocatorias | 1 hora |
+| `GET /api/analytics/by-theme` | SQLite convocatorias | 1 hora |
+| `GET /api/analytics/by-region` | SQLite convocatorias | 1 hora |
+| `GET /api/analytics/top-organs` | SQLite convocatorias | 1 hora |
+| `GET /api/analytics/status` | SQLite convocatorias | 1 hora |
+| `POST /api/admin/sync/convocatorias` | BDNS → SQLite (admin, background) | - |
+| `GET /api/admin/sync/convocatorias/status` | Estado del sync en curso | - |
 
 ---
 
@@ -248,6 +275,8 @@ El backend actua como proxy transparente con cache. Transforma las respuestas de
 | `BDNS_TIMEOUT` | 30.0 | Timeout HTTP para peticiones a BDNS (segundos) |
 | `ALLOWED_ORIGINS` | `http://localhost:5174` | Origenes CORS |
 | `ENVIRONMENT` | `development` | `development` o `production` |
+| `CONVOCATORIAS_DB_PATH` | `data/convocatorias.db` | Ruta a la BD SQLite de convocatorias |
+| `OPENAI_API_KEY` | _(vacio)_ | API key de OpenAI para embeddings |
 | `DISCORD_WEBHOOK_URL` | _(vacio)_ | Webhook de Discord para notificaciones de feedback |
 
 ### 5.2 Configuracion CORS
@@ -332,3 +361,6 @@ BDNS_BASE_URL=https://www.infosubvenciones.es/bdnstrans/api
 | 0.1.0 | 2026-02 | Especificaciones iniciales a partir del estudio de viabilidad |
 | 0.1.1 | 2026-02 | Feedback via Discord webhook, rate limiter BDNS, timeout configurable |
 | 0.1.2 | 2026-02 | Homepage rediseñada con filtros y paginacion, quick filters en pagina de busqueda, puertos dev actualizados (8001/5174) |
+| 0.2.0 | 2026-02 | Fase 2: Transparencia (grandes beneficiarios, SQLite FTS5 para beneficiarios) |
+| 0.3.0 | 2026-03 | Fase 3: Replica local convocatorias en SQLite, busqueda semantica (OpenAI embeddings + numpy coseno), dashboard analytics (Chart.js), nuevos endpoints /api/search y /api/analytics/* |
+| 0.3.1 | 2026-03 | Sync en background: POST /sync/convocatorias lanza tarea async y retorna inmediatamente, nuevo GET /sync/convocatorias/status para monitorizar progreso |

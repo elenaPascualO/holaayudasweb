@@ -88,7 +88,7 @@ Este plan evalúa la evolución hacia un **producto con datos propios y intelige
 
 ---
 
-### FASE 1: Réplica de Convocatorias en SQLite (~3 días)
+### FASE 1: Réplica de Convocatorias en SQLite (~3 días) — COMPLETADA
 
 **Objetivo**: Tener todas las convocatorias de BDNS en una base de datos local con búsqueda FTS5.
 
@@ -249,9 +249,11 @@ Railway cron: ejecutar diariamente a las 07:00 UTC (tras actualización BDNS ~06
 
 ---
 
-### FASE 2: Enriquecimiento con IA (~5 días)
+### FASE 2: Enriquecimiento con IA (~5 días) — PARCIALMENTE COMPLETADA
 
 **Objetivo**: Cada convocatoria tiene categorías semánticas, resumen ciudadano, keywords y embedding.
+
+> **Nota**: Se implementaron embeddings con OpenAI `text-embedding-3-small` y búsqueda semántica híbrida (FTS5 + coseno). La clasificación con Claude Haiku (categorías IA, resúmenes, keywords) queda pendiente para una fase futura.
 
 #### 2.1 Pipeline de enriquecimiento
 
@@ -430,9 +432,9 @@ async def search_semantic(query: str, k: int = 20) -> list:
 
 ---
 
-### FASE 3: Analytics Dashboard (~2 días)
+### FASE 3: Analytics Dashboard (~2 días) — COMPLETADA
 
-**Objetivo**: Página `/analiticas` con estadísticas sobre las convocatorias replicadas.
+**Objetivo**: Página `/datos` con estadísticas sobre las convocatorias replicadas.
 
 #### 3.1 Endpoints de analytics
 
