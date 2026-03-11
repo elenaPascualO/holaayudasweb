@@ -118,7 +118,7 @@ function createPageHeader(years, selectedYear, nifCif, searchQuery = '') {
       <h1 class="text-2xl font-bold text-gray-900 mb-1">Beneficiarios</h1>
       <p class="text-sm text-gray-500">
         Ranking de los mayores receptores de dinero publico en España.
-        Datos en tiempo real de la
+        Datos sincronizados diariamente con la
         <a href="https://www.infosubvenciones.es/bdnstrans/GE/es/grandesbeneficiarios"
            target="_blank" rel="noopener noreferrer"
            class="text-primary hover:underline">BDNS</a>.
