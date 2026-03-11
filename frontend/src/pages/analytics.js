@@ -49,7 +49,7 @@ export async function renderAnalyticsPage(params = {}) {
     return `
       <div class="max-w-5xl mx-auto">
         <div class="mb-8">
-          <h1 class="text-2xl font-bold text-gray-900 mb-1">Datos y Tendencias</h1>
+          <h1 class="text-2xl font-bold text-gray-900 mb-1">Estadísticas</h1>
           <p class="text-sm text-gray-500">
             Analisis de ${formatNumber(summary.total)} convocatorias publicadas en la BDNS
           </p>
@@ -140,7 +140,7 @@ export async function renderAnalyticsPage(params = {}) {
     _chartData = null
     return `
       <div class="max-w-5xl mx-auto">
-        <h1 class="text-2xl font-bold text-gray-900 mb-4">Datos y Tendencias</h1>
+        <h1 class="text-2xl font-bold text-gray-900 mb-4">Estadísticas</h1>
         <div class="bg-white rounded-xl border border-gray-100 p-8 text-center">
           <p class="text-gray-500">No se pudieron cargar los datos de analitica.</p>
           <p class="text-sm text-gray-400 mt-2">Es posible que la base de datos local aun no este disponible.</p>

@@ -115,7 +115,7 @@ export async function renderTransparenciaPage(params) {
 function createPageHeader(years, selectedYear, nifCif, searchQuery = '') {
   return `
     <div class="mb-6">
-      <h1 class="text-2xl font-bold text-gray-900 mb-1">Transparencia</h1>
+      <h1 class="text-2xl font-bold text-gray-900 mb-1">Beneficiarios</h1>
       <p class="text-sm text-gray-500">
         Ranking de los mayores receptores de dinero publico en España.
         Datos en tiempo real de la

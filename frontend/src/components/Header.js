@@ -15,11 +15,11 @@ export function createHeader() {
         <nav class="flex items-center gap-3">
           <a href="/transparencia" data-link
              class="text-sm font-medium px-3 py-1 rounded-full bg-primary/5 text-primary hover:bg-primary/10 transition-colors no-underline">
-            Transparencia
+            Beneficiarios
           </a>
           <a href="/datos" data-link
              class="text-sm font-medium px-3 py-1 rounded-full bg-primary/5 text-primary hover:bg-primary/10 transition-colors no-underline">
-            Datos
+            Estadísticas
           </a>
           <a href="/contacto" data-link
              class="text-sm font-medium px-3 py-1 rounded-full text-gray-500 hover:bg-gray-100 transition-colors no-underline">

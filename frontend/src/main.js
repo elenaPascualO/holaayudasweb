@@ -31,6 +31,7 @@ const app = document.querySelector('#app')
 function render(pageHtml) {
   app.innerHTML =
     createHeader() +
+    createDisclaimer() +
     `<main class="max-w-5xl mx-auto px-4 py-6">${pageHtml}</main>` +
     createFooter()
   setupEventListeners()
@@ -44,6 +45,23 @@ function renderLoading() {
 }
 
 /**
+ * Create the beta disclaimer banner.
+ */
+function createDisclaimer() {
+  return `
+    <div class="bg-amber-50 border-b border-amber-200">
+      <div class="max-w-5xl mx-auto px-4 py-2 flex items-start gap-2">
+        <span class="text-amber-600 text-sm mt-0.5">&#9432;</span>
+        <p class="text-xs text-amber-700">
+          <strong>Base de datos en construccion:</strong> Estamos replicando y enriqueciendo progresivamente la BDNS.
+          Algunos detalles pueden estar incompletos. Actualizamos los datos diariamente.
+        </p>
+      </div>
+    </div>
+  `
+}
+
+/**
  * Create the footer.
  */
 function createFooter() {
@@ -51,13 +69,10 @@ function createFooter() {
     <footer class="border-t border-gray-100 mt-12 py-6">
       <div class="max-w-5xl mx-auto px-4 text-center">
         <p class="text-xs text-gray-400">
-          Los resultados se obtienen en tiempo real de
+          Los datos no se consultan en tiempo real. La base de datos de Hola Ayudas se sincroniza diariamente con la
           <a href="https://www.infosubvenciones.es" target="_blank" rel="noopener noreferrer"
-             class="text-gray-500 hover:text-primary">infosubvenciones.es</a>
-          (BDNS).
-        </p>
-        <p class="text-xs text-gray-400 mt-0.5">
-          Hola Ayudas es solo una interfaz mas amigable para consultar los datos oficiales.
+             class="text-gray-500 hover:text-primary">BDNS</a>
+          para ofrecer busqueda inteligente y estadisticas.
         </p>
         <p class="text-xs text-gray-300 mt-1">
           Un proyecto de
