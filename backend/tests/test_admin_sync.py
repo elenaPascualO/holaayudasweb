@@ -22,12 +22,14 @@ def reset_sync_state():
     """Reset admin sync state before each test."""
     admin_module._sync_state = {"status": "idle"}
     admin_module._sync_task = None
+    admin_module._last_result_by_mode.clear()
     yield
     # Cleanup: cancel any lingering task
     if admin_module._sync_task and not admin_module._sync_task.done():
         admin_module._sync_task.cancel()
     admin_module._sync_state = {"status": "idle"}
     admin_module._sync_task = None
+    admin_module._last_result_by_mode.clear()
 
 
 AUTH_HEADER = {"Authorization": "Bearer test-secret"}
@@ -209,3 +211,85 @@ async def test_background_sync_updates_state_on_failure(client):
 
     assert admin_module._sync_state["status"] == "failed"
     assert "BDNS API is down" in admin_module._sync_state["error"]
+
+
+async def test_embeddings_skipped_when_last_detail_failed(client):
+    """Embeddings backfill is skipped if last detail backfill failed."""
+    admin_module._last_result_by_mode["backfill-detail"] = {
+        "status": "failed",
+        "mode": "backfill-detail",
+        "error": "BDNS API timeout",
+        "finished_at": "2026-03-11T08:00:00+00:00",
+    }
+
+    response = await client.post(
+        "/api/admin/sync/convocatorias?mode=backfill-embeddings",
+        headers=AUTH_HEADER,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "skipped"
+    assert "detail failed" in data["reason"].lower()
+    assert data["detail_error"] == "BDNS API timeout"
+
+
+async def test_embeddings_allowed_when_last_detail_succeeded(client):
+    """Embeddings backfill runs normally if last detail backfill succeeded."""
+    admin_module._last_result_by_mode["backfill-detail"] = {
+        "status": "completed",
+        "mode": "backfill-detail",
+        "finished_at": "2026-03-11T08:00:00+00:00",
+    }
+
+    async def fake_run_sync(mode, progress_callback=None):
+        return {"mode": mode, "embeddings_generated": 5}
+
+    with patch(
+        "backend.scripts.sync_convocatorias.run_sync",
+        side_effect=fake_run_sync,
+    ):
+        response = await client.post(
+            "/api/admin/sync/convocatorias?mode=backfill-embeddings",
+            headers=AUTH_HEADER,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "started"
+
+
+async def test_embeddings_allowed_when_no_detail_history(client):
+    """Embeddings backfill runs if there's no detail history (e.g. after restart)."""
+    async def fake_run_sync(mode, progress_callback=None):
+        return {"mode": mode, "embeddings_generated": 5}
+
+    with patch(
+        "backend.scripts.sync_convocatorias.run_sync",
+        side_effect=fake_run_sync,
+    ):
+        response = await client.post(
+            "/api/admin/sync/convocatorias?mode=backfill-embeddings",
+            headers=AUTH_HEADER,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "started"
+
+
+async def test_failed_detail_tracked_in_history(client):
+    """Failed detail sync is recorded in _last_result_by_mode."""
+    async def fake_run_sync(mode, progress_callback=None):
+        raise RuntimeError("Connection reset")
+
+    with patch(
+        "backend.scripts.sync_convocatorias.run_sync",
+        side_effect=fake_run_sync,
+    ):
+        await client.post(
+            "/api/admin/sync/convocatorias?mode=backfill-detail",
+            headers=AUTH_HEADER,
+        )
+        await asyncio.sleep(0.1)
+
+    assert admin_module._last_result_by_mode["backfill-detail"]["status"] == "failed"
+    assert "Connection reset" in admin_module._last_result_by_mode["backfill-detail"]["error"]

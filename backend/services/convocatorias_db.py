@@ -358,6 +358,36 @@ def store_embeddings(
         conn.close()
 
 
+def get_backfill_stats(db_path: str | None = None) -> dict:
+    """Return counts for monitoring backfill progress.
+
+    Returns:
+        Dict with total, with_detail, with_embedding, pending_detail,
+        pending_embedding counts.
+    """
+    conn = _get_connection(db_path)
+    try:
+        row = conn.execute(
+            """SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN detail_fetched = 1 THEN 1 ELSE 0 END) AS with_detail,
+                SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS with_embedding
+            FROM convocatorias"""
+        ).fetchone()
+        total = row["total"]
+        with_detail = row["with_detail"]
+        with_embedding = row["with_embedding"]
+        return {
+            "total_convocatorias": total,
+            "with_detail": with_detail,
+            "with_embedding": with_embedding,
+            "pending_detail": total - with_detail,
+            "pending_embedding": with_detail - with_embedding,
+        }
+    finally:
+        conn.close()
+
+
 def rebuild_fts(db_path: str | None = None) -> None:
     """Rebuild the FTS5 index from the convocatorias table.
 

@@ -18,6 +18,9 @@ _beneficiarios_sync_running = False
 _sync_state: dict = {"status": "idle"}
 _sync_task: asyncio.Task | None = None
 
+# Last completed/failed result per mode (in-memory, resets on restart)
+_last_result_by_mode: dict[str, dict] = {}
+
 
 def _validate_token(authorization: str) -> None:
     """Validate admin bearer token."""
@@ -38,26 +41,32 @@ async def _run_sync_background(mode: str) -> None:
         from backend.scripts.sync_convocatorias import run_sync
 
         result = await run_sync(mode=mode, progress_callback=_update_sync_progress)
-        _sync_state = {
+        finished = {
             "status": "completed",
             "mode": mode,
             "result": result,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         }
+        _sync_state = finished
+        _last_result_by_mode[mode] = finished
     except asyncio.CancelledError:
-        _sync_state = {
+        finished = {
             "status": "cancelled",
             "mode": mode,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         }
+        _sync_state = finished
+        _last_result_by_mode[mode] = finished
     except Exception as e:
         logger.exception("Background convocatorias sync failed")
-        _sync_state = {
+        finished = {
             "status": "failed",
             "mode": mode,
             "error": str(e),
             "finished_at": datetime.now(timezone.utc).isoformat(),
         }
+        _sync_state = finished
+        _last_result_by_mode[mode] = finished
 
 
 def cancel_sync_task() -> None:
@@ -110,8 +119,8 @@ async def trigger_convocatorias_sync(
     Modes:
         daily - Incremental sync (new list + detail + embeddings)
         full-list - Full historical load (~610K records)
-        backfill-detail - Fetch detail for 3000 records without it
-        backfill-embeddings - Generate embeddings for 500 records
+        backfill-detail - Fetch detail for 30000 records without it
+        backfill-embeddings - Generate embeddings for 10000 records (skipped if last detail failed)
 
     Use GET /api/admin/sync/convocatorias/status to check progress.
     """
@@ -128,6 +137,22 @@ async def trigger_convocatorias_sync(
 
     if _sync_state.get("status") == "running":
         return {"status": "skipped", "reason": "Convocatorias sync already in progress"}
+
+    # Embeddings depend on detail — skip if last detail run failed
+    if mode == "backfill-embeddings":
+        last_detail = _last_result_by_mode.get("backfill-detail")
+        if last_detail and last_detail["status"] == "failed":
+            logger.warning(
+                "Skipping backfill-embeddings: last backfill-detail failed at %s: %s",
+                last_detail.get("finished_at"),
+                last_detail.get("error"),
+            )
+            return {
+                "status": "skipped",
+                "reason": "Last backfill-detail failed, fix before running embeddings",
+                "detail_error": last_detail.get("error"),
+                "detail_finished_at": last_detail.get("finished_at"),
+            }
 
     _sync_state = {
         "status": "running",
@@ -147,3 +172,15 @@ async def get_convocatorias_sync_status(
     """Return current state of the convocatorias sync task."""
     _validate_token(authorization)
     return _sync_state
+
+
+@router.get("/sync/convocatorias/stats")
+async def get_convocatorias_backfill_stats(
+    authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
+) -> dict:
+    """Return backfill progress counters for detail and embeddings."""
+    _validate_token(authorization)
+
+    from backend.services.convocatorias_db import get_backfill_stats
+
+    return await asyncio.to_thread(get_backfill_stats)
