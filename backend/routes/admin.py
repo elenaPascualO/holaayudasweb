@@ -11,8 +11,9 @@ from backend.config import ADMIN_SECRET
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
 
-# Track whether beneficiarios sync is running
-_beneficiarios_sync_running = False
+# Beneficiarios sync state — shared across endpoints
+_beneficiarios_sync_state: dict = {"status": "idle"}
+_beneficiarios_sync_task: asyncio.Task | None = None
 
 # Convocatorias sync state — shared across endpoints
 _sync_state: dict = {"status": "idle"}
@@ -76,40 +77,91 @@ async def _run_sync_background(mode: str) -> None:
 
 
 def cancel_sync_task() -> None:
-    """Cancel the running sync task if any. Called during app shutdown."""
-    global _sync_task
+    """Cancel running sync tasks if any. Called during app shutdown."""
+    global _sync_task, _beneficiarios_sync_task
     if _sync_task and not _sync_task.done():
         _sync_task.cancel()
-        logger.info("Cancelled running sync task on shutdown")
+        logger.info("Cancelled running convocatorias sync task on shutdown")
+    if _beneficiarios_sync_task and not _beneficiarios_sync_task.done():
+        _beneficiarios_sync_task.cancel()
+        logger.info("Cancelled running beneficiarios sync task on shutdown")
 
 
-@router.post("/sync")
-async def trigger_sync(
-    authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
-) -> dict:
-    """Trigger beneficiarios sync from BDNS API into local SQLite.
-
-    Protected by a Bearer token. Intended to be called from a Railway cron job:
-        curl -X POST https://holaayudas.com/api/admin/sync -H "Authorization: Bearer <token>"
-    """
-    global _beneficiarios_sync_running
-
-    _validate_token(authorization)
-
-    if _beneficiarios_sync_running:
-        return {"status": "skipped", "reason": "Sync already in progress"}
-
-    _beneficiarios_sync_running = True
+async def _run_beneficiarios_sync_background() -> None:
+    """Run beneficiarios sync in background, updating state on completion or failure."""
+    global _beneficiarios_sync_state
+    logger.info("Background beneficiarios sync starting")
     try:
         from backend.scripts.sync_beneficiarios import run_sync
 
-        await run_sync()
-        return {"status": "ok"}
+        result = await run_sync()
+        _beneficiarios_sync_state = {
+            "status": "completed",
+            "result": result,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        }
+        logger.info("Background beneficiarios sync completed: %s", result)
+    except asyncio.CancelledError:
+        _beneficiarios_sync_state = {
+            "status": "cancelled",
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        }
     except Exception as e:
-        logger.exception("Beneficiarios sync failed")
-        raise HTTPException(status_code=500, detail=f"Sync failed: {e}")
-    finally:
-        _beneficiarios_sync_running = False
+        logger.exception("Background beneficiarios sync failed")
+        _beneficiarios_sync_state = {
+            "status": "failed",
+            "error": str(e),
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+
+@router.post("/sync/beneficiarios")
+async def trigger_sync(
+    authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
+) -> dict:
+    """Trigger beneficiarios sync in background and return immediately.
+
+    Protected by a Bearer token. Intended to be called from a Railway cron job.
+    Use GET /api/admin/sync/beneficiarios/status to check progress.
+    """
+    global _beneficiarios_sync_state, _beneficiarios_sync_task
+
+    logger.info("Received beneficiarios sync request")
+    _validate_token(authorization)
+
+    if _beneficiarios_sync_state.get("status") == "running":
+        logger.info("Beneficiarios sync already running, skipping")
+        return {"status": "skipped", "reason": "Sync already in progress"}
+
+    _beneficiarios_sync_state = {
+        "status": "running",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _beneficiarios_sync_task = asyncio.create_task(_run_beneficiarios_sync_background())
+    logger.info("Background beneficiarios sync task created")
+
+    return {"status": "started"}
+
+
+@router.get("/sync/beneficiarios/status")
+async def get_beneficiarios_sync_status(
+    authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
+) -> dict:
+    """Return current state of the beneficiarios sync task."""
+    _validate_token(authorization)
+    return _beneficiarios_sync_state
+
+
+@router.get("/sync/beneficiarios/stats")
+async def get_beneficiarios_stats(
+    authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
+) -> dict:
+    """Return beneficiarios DB stats: totals, per-year breakdown, and sync delta."""
+    _validate_token(authorization)
+
+    from backend.services.beneficiarios_db import get_beneficiarios_stats
+
+    return await asyncio.to_thread(get_beneficiarios_stats)
 
 
 @router.post("/sync/convocatorias")

@@ -243,11 +243,11 @@ async def sync_daily(
     if progress_callback:
         progress_callback({"phase": "daily-list", "new_convocatorias": new_inserted})
 
-    # Backfill some details
-    detail_count = await sync_backfill_detail(limit=500, progress_callback=progress_callback)
+    # Backfill details for new convocatorias (and any pending from previous runs)
+    detail_count = await sync_backfill_detail(limit=1000, progress_callback=progress_callback)
 
-    # Generate some embeddings
-    embedding_count = await sync_backfill_embeddings(limit=200, progress_callback=progress_callback)
+    # Generate embeddings for convocatorias with detail but no embedding
+    embedding_count = await sync_backfill_embeddings(limit=1000, progress_callback=progress_callback)
 
     return {
         "new_convocatorias": new_inserted,

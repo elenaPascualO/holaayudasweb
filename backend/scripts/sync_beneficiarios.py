@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 import httpx
 
 from backend.config import BDNS_BASE_URL, BENEFICIARIOS_DB_PATH
-from backend.services.beneficiarios_db import init_db, sync_beneficiarios
+from backend.services.beneficiarios_db import init_db, sync_beneficiarios, get_sync_status
 
 logging.basicConfig(
     level=logging.INFO,
@@ -76,12 +76,26 @@ async def fetch_page(
             "order": "ayudaETotal",
             "direccion": "desc",
         }
-        response = await client.get(
-            "/grandesbeneficiarios/busqueda", params=params
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data.get("content", [])
+        for attempt in range(3):
+            try:
+                response = await client.get(
+                    "/grandesbeneficiarios/busqueda", params=params
+                )
+                if response.status_code == 429:
+                    delay = 2.0 * (2 ** attempt)
+                    logger.warning("429 on year %d page %d, retrying in %.1fs", year, page, delay)
+                    await asyncio.sleep(delay)
+                    continue
+                response.raise_for_status()
+                data = response.json()
+                return data.get("content", [])
+            except (httpx.HTTPError, httpx.TimeoutException) as e:
+                if attempt < 2:
+                    logger.warning("Error on year %d page %d: %s, retrying", year, page, e)
+                    await asyncio.sleep(1.0 * (attempt + 1))
+                else:
+                    raise
+        return []
 
 
 async def fetch_all_for_year(
@@ -92,7 +106,7 @@ async def fetch_all_for_year(
     """Fetch all beneficiarios for a given year.
 
     Fetches the first page to determine total pages, then fetches
-    remaining pages in parallel.
+    remaining pages in batches to avoid overwhelming the API.
 
     Args:
         client: httpx client.
@@ -102,7 +116,7 @@ async def fetch_all_for_year(
     Returns:
         All beneficiary records for the year.
     """
-    # First page to get total
+    # First page with retry logic to get total pages
     async with semaphore:
         params = {
             "anios": [year],
@@ -111,28 +125,56 @@ async def fetch_all_for_year(
             "order": "ayudaETotal",
             "direccion": "desc",
         }
-        response = await client.get(
-            "/grandesbeneficiarios/busqueda", params=params
-        )
-        response.raise_for_status()
-        first_data = response.json()
+        first_data = None
+        for attempt in range(3):
+            try:
+                response = await client.get("/grandesbeneficiarios/busqueda", params=params)
+                if response.status_code == 429:
+                    delay = 2.0 * (2 ** attempt)
+                    logger.warning("429 on year %d page 0, retrying in %.1fs", year, delay)
+                    await asyncio.sleep(delay)
+                    continue
+                response.raise_for_status()
+                first_data = response.json()
+                break
+            except (httpx.HTTPError, httpx.TimeoutException) as e:
+                if attempt < 2:
+                    logger.warning("Error on year %d page 0: %s, retrying", year, e)
+                    await asyncio.sleep(1.0 * (attempt + 1))
+                else:
+                    raise
 
-    records = first_data.get("content", [])
+        if not first_data:
+            return []
+
     total_pages = first_data.get("totalPages", 1)
     total_elements = first_data.get("totalElements", 0)
     logger.info("Year %d: %d records across %d pages", year, total_elements, total_pages)
 
-    if total_pages <= 1:
-        return records
+    first_records = first_data.get("content", [])
 
-    # Fetch remaining pages in parallel
-    tasks = [
-        fetch_page(client, semaphore, year, page)
-        for page in range(1, total_pages)
-    ]
-    pages = await asyncio.gather(*tasks)
-    for page_records in pages:
-        records.extend(page_records)
+    if total_pages <= 1:
+        return first_records
+
+    records = list(first_records)
+
+    # Fetch remaining pages in batches of 10 to avoid 429s
+    batch_size = 10
+    for batch_start in range(1, total_pages, batch_size):
+        batch_end = min(batch_start + batch_size, total_pages)
+        tasks = [
+            fetch_page(client, semaphore, year, page)
+            for page in range(batch_start, batch_end)
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error("Failed year %d page %d: %s", year, batch_start + i, result)
+                continue
+            records.extend(result)
+
+        await asyncio.sleep(0.2)
 
     return records
 
@@ -165,17 +207,24 @@ MAX_RETRIES = 3
 RETRY_DELAY = 60  # seconds between retries
 
 
-async def run_sync() -> None:
+async def run_sync() -> dict:
     """Main sync entrypoint: fetch all data and write to SQLite.
 
     Retries the full download up to MAX_RETRIES times with RETRY_DELAY
     between attempts. Only writes to SQLite if the download succeeds.
+
+    Returns:
+        Dict with sync results (records_before, records_after, delta, elapsed).
     """
     start = time.monotonic()
     logger.info("Starting beneficiarios sync...")
 
     # Ensure DB schema exists
     init_db()
+
+    # Save pre-sync count for delta tracking
+    prev_status = get_sync_status()
+    records_before = prev_status["total_records"]
 
     # Fetch with retries
     all_records = None
@@ -207,12 +256,24 @@ async def run_sync() -> None:
             "INSERT OR REPLACE INTO sync_metadata (key, value) VALUES ('last_sync', ?)",
             (now,),
         )
+        conn.execute(
+            "INSERT OR REPLACE INTO sync_metadata (key, value) VALUES ('prev_total_records', ?)",
+            (str(records_before),),
+        )
         conn.commit()
     finally:
         conn.close()
 
     elapsed = time.monotonic() - start
-    logger.info("Sync complete: %d records in %.1fs", count, elapsed)
+    logger.info("Sync complete: %d records in %.1fs (was %d, delta %+d)",
+                count, elapsed, records_before, count - records_before)
+
+    return {
+        "records_before": records_before,
+        "records_after": count,
+        "delta": count - records_before,
+        "elapsed_seconds": round(elapsed, 1),
+    }
 
 
 def main() -> None:
