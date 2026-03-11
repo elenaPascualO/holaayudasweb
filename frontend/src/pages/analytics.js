@@ -311,8 +311,12 @@ export function initAnalyticsCharts() {
         onClick: (_, elements) => {
           if (elements.length > 0) {
             const idx = elements[0].index
-            const theme = byTheme[idx].label
-            navigate(`/buscar?q=${encodeURIComponent(theme)}`)
+            const theme = byTheme[idx]
+            if (theme.code) {
+              navigate(`/buscar?finalidad=${theme.code}`)
+            } else {
+              navigate(`/buscar?q=${encodeURIComponent(theme.label)}`)
+            }
           }
         },
       },
@@ -345,8 +349,12 @@ export function initAnalyticsCharts() {
         onClick: (_, elements) => {
           if (elements.length > 0) {
             const idx = elements[0].index
-            const region = byRegion[idx].label
-            navigate(`/buscar?q=${encodeURIComponent(region)}`)
+            const region = byRegion[idx]
+            if (region.code) {
+              navigate(`/buscar?regiones=${encodeURIComponent(region.code)}`)
+            } else {
+              navigate(`/buscar?q=${encodeURIComponent(region.label)}`)
+            }
           }
         },
       },
@@ -370,6 +378,13 @@ export function initAnalyticsCharts() {
         maintainAspectRatio: false,
         plugins: {
           legend: { position: 'bottom' },
+        },
+        onClick: (_, elements) => {
+          if (elements.length > 0) {
+            const idx = elements[0].index
+            const abierto = idx === 0 ? 'true' : 'false'
+            navigate(`/buscar?abierto=${abierto}`)
+          }
         },
       },
     })

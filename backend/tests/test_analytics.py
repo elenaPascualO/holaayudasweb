@@ -49,20 +49,23 @@ def setup_db(tmp_path, monkeypatch):
     update_convocatoria_detail("A001", {
         "presupuestoTotal": 5000000.0,
         "descripcionFinalidad": "Digital",
+        "finalidad": {"id": 10},
         "abierto": True,
-        "regiones": [{"id": 1, "descripcion": "MADRID"}],
+        "regiones": [{"id": 1, "codigo": "ES30", "descripcion": "MADRID"}],
     }, db_path)
     update_convocatoria_detail("A002", {
         "presupuestoTotal": 2000000.0,
         "descripcionFinalidad": "Ciencia",
+        "finalidad": {"id": 20},
         "abierto": False,
-        "regiones": [{"id": 2, "descripcion": "CATALUÑA"}],
+        "regiones": [{"id": 2, "codigo": "ES51", "descripcion": "CATALUÑA"}],
     }, db_path)
     update_convocatoria_detail("A003", {
         "presupuestoTotal": 1000000.0,
         "descripcionFinalidad": "Agricultura",
+        "finalidad": {"id": 30},
         "abierto": True,
-        "regiones": [{"id": 3, "descripcion": "NAVARRA"}],
+        "regiones": [{"id": 3, "codigo": "ES22", "descripcion": "NAVARRA"}],
     }, db_path)
 
     rebuild_fts(db_path)
@@ -122,6 +125,21 @@ class TestAnalyticsByTheme:
             assert "count" in data[0]
 
     @pytest.mark.asyncio
+    async def test_by_theme_returns_code(self, client):
+        """Theme entries should include finalidad_id as 'code' for chart drill-down."""
+        resp = await client.get("/api/analytics/by-theme")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) >= 1
+        # Every entry should have a code field
+        for entry in data:
+            assert "code" in entry
+        # Verify specific codes from fixture
+        codes = {d["label"]: d["code"] for d in data}
+        assert codes["Digital"] == 10
+        assert codes["Ciencia"] == 20
+
+    @pytest.mark.asyncio
     async def test_by_theme_with_year_filter(self, client):
         resp = await client.get("/api/analytics/by-theme?yearFrom=2024&yearTo=2024")
         assert resp.status_code == 200
@@ -140,6 +158,21 @@ class TestAnalyticsByRegion:
         if data:
             labels = [d["label"] for d in data]
             assert any("MADRID" in l for l in labels)
+
+    @pytest.mark.asyncio
+    async def test_by_region_returns_code(self, client):
+        """Region entries should include region codigo as 'code' for chart drill-down."""
+        resp = await client.get("/api/analytics/by-region")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) >= 1
+        # Every entry should have a code field
+        for entry in data:
+            assert "code" in entry
+        # Verify specific codes from fixture
+        codes = {d["label"]: d["code"] for d in data}
+        assert codes["MADRID"] == "ES30"
+        assert codes["CATALUÑA"] == "ES51"
 
 
 class TestAnalyticsTopOrgans:

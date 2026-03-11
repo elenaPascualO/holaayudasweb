@@ -15,9 +15,10 @@ def client():
     return AsyncClient(transport=transport, base_url="http://test")
 
 
+@patch("backend.routes.beneficiarios.has_data", return_value=False)
 @patch("backend.routes.beneficiarios.search_top_beneficiaries", new_callable=AsyncMock)
-async def test_search_top_beneficiaries_with_year(mock_search, client):
-    """Search endpoint filters by year."""
+async def test_search_top_beneficiaries_with_year(mock_search, mock_has_data, client):
+    """Search endpoint filters by year (BDNS fallback when no local data)."""
     mock_search.return_value = {
         "content": [
             {
@@ -38,9 +39,10 @@ async def test_search_top_beneficiaries_with_year(mock_search, client):
     assert call_params["anios"] == [2024]
 
 
+@patch("backend.routes.beneficiarios.has_data", return_value=False)
 @patch("backend.routes.beneficiarios.search_top_beneficiaries", new_callable=AsyncMock)
-async def test_search_top_beneficiaries_with_nifcif(mock_search, client):
-    """Search endpoint filters by NIF/CIF."""
+async def test_search_top_beneficiaries_with_nifcif(mock_search, mock_has_data, client):
+    """Search endpoint filters by NIF/CIF (BDNS fallback when no local data)."""
     mock_search.return_value = {
         "content": [],
         "totalElements": 0,
@@ -90,9 +92,10 @@ async def test_no_year_uses_aggregated_sqlite(mock_aggregated, mock_has_data, cl
     mock_aggregated.assert_called_once_with(page=0, page_size=20)
 
 
+@patch("backend.routes.beneficiarios.has_data", return_value=False)
 @patch("backend.routes.beneficiarios.get_top_beneficiaries_years", new_callable=AsyncMock)
-async def test_get_years(mock_years, client):
-    """Years endpoint returns list of years."""
+async def test_get_years(mock_years, mock_has_data, client):
+    """Years endpoint returns list of years (BDNS fallback when no local data)."""
     mock_years.return_value = [2024, 2023, 2022, 2021]
     response = await client.get("/api/beneficiarios-top/anios")
     assert response.status_code == 200

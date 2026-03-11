@@ -1,5 +1,7 @@
 """Top beneficiaries (grandes beneficiarios) routes."""
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.services.bdns_client import (
@@ -8,10 +10,15 @@ from backend.services.bdns_client import (
     search_top_beneficiaries,
 )
 from backend.services.beneficiarios_db import (
+    get_available_years_async,
+    get_beneficiario_by_nif_async,
     get_top_beneficiarios_aggregated_async,
+    get_top_beneficiarios_by_year_async,
     has_data,
     search_beneficiarios_async,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["beneficiarios"])
 
@@ -54,7 +61,21 @@ async def get_top_beneficiaries(
             page_size=pageSize,
         )
 
-    # Path 3: Specific year or nifCif → proxy to BDNS
+    # Path 3: Specific year or nifCif → try local SQLite first, fallback to BDNS
+    if has_data():
+        try:
+            if nifCif:
+                return await get_beneficiario_by_nif_async(
+                    nif_cif=nifCif, page=page, page_size=pageSize,
+                )
+            if anio is not None:
+                return await get_top_beneficiarios_by_year_async(
+                    anio=anio, page=page, page_size=pageSize,
+                )
+        except Exception:
+            logger.warning("Local beneficiarios query failed, falling back to BDNS proxy")
+
+    # Fallback to BDNS proxy
     params: dict = {
         "page": page,
         "pageSize": pageSize,
@@ -74,7 +95,13 @@ async def get_top_beneficiaries(
 
 @router.get("/beneficiarios-top/anios")
 async def get_years() -> list:
-    """Get available years for top beneficiaries."""
+    """Get available years for top beneficiaries. Local-first with BDNS fallback."""
+    if has_data():
+        try:
+            return await get_available_years_async()
+        except Exception:
+            logger.warning("Local years query failed, falling back to BDNS proxy")
+
     try:
         return await get_top_beneficiaries_years()
     except BDNSError as e:

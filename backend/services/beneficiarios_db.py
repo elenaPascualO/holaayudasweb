@@ -444,6 +444,237 @@ def get_sync_status(db_path: str | None = None) -> dict:
         conn.close()
 
 
+def get_beneficiarios_stats(db_path: str | None = None) -> dict:
+    """Get detailed beneficiarios stats including per-year breakdown and sync deltas.
+
+    Args:
+        db_path: Override path (useful for tests).
+
+    Returns:
+        Dict with total_records, by_year breakdown, last sync info, and delta.
+    """
+    conn = _get_connection(db_path)
+    try:
+        total = conn.execute("SELECT COUNT(*) FROM beneficiarios").fetchone()[0]
+
+        # Per-year breakdown
+        rows = conn.execute(
+            "SELECT ejercicio, COUNT(*) as count, SUM(ayuda_e_total) as total_amount "
+            "FROM beneficiarios GROUP BY ejercicio ORDER BY ejercicio DESC"
+        ).fetchall()
+        by_year = [
+            {
+                "year": row["ejercicio"],
+                "records": row["count"],
+                "total_amount": round(row["total_amount"] or 0, 2),
+            }
+            for row in rows
+        ]
+
+        # Distinct beneficiaries (unique nif_cif)
+        distinct = conn.execute(
+            "SELECT COUNT(DISTINCT nif_cif) FROM beneficiarios WHERE nif_cif IS NOT NULL"
+        ).fetchone()[0]
+
+        # Sync metadata
+        last_sync_row = conn.execute(
+            "SELECT value FROM sync_metadata WHERE key = 'last_sync'"
+        ).fetchone()
+        last_sync = last_sync_row["value"] if last_sync_row else None
+
+        prev_count_row = conn.execute(
+            "SELECT value FROM sync_metadata WHERE key = 'prev_total_records'"
+        ).fetchone()
+        prev_count = int(prev_count_row["value"]) if prev_count_row else None
+
+        delta = total - prev_count if prev_count is not None else None
+
+        return {
+            "total_records": total,
+            "distinct_beneficiaries": distinct,
+            "by_year": by_year,
+            "last_sync": last_sync,
+            "previous_total_records": prev_count,
+            "delta_records": delta,
+        }
+    finally:
+        conn.close()
+
+
+def get_top_beneficiarios_by_year(
+    anio: int,
+    page: int = 0,
+    page_size: int = 20,
+    db_path: str | None = None,
+) -> dict:
+    """Get top beneficiarios for a specific year from local SQLite.
+
+    Args:
+        anio: Year to filter.
+        page: Page number (0-indexed).
+        page_size: Results per page.
+        db_path: Override path (useful for tests).
+
+    Returns:
+        Dict in BDNS-compatible paginated format.
+    """
+    conn = _get_connection(db_path)
+    try:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM beneficiarios WHERE ejercicio = ?",
+            (anio,),
+        ).fetchone()[0]
+
+        if total == 0:
+            return _empty_response(page, page_size)
+
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        offset = page * page_size
+
+        rows = conn.execute(
+            """SELECT id_persona, beneficiario, nif_cif, nombre,
+                      ejercicio, ayuda_e_total
+               FROM beneficiarios
+               WHERE ejercicio = ?
+               ORDER BY ayuda_e_total DESC
+               LIMIT ? OFFSET ?""",
+            (anio, page_size, offset),
+        ).fetchall()
+
+        content = [
+            {
+                "idPersona": row["id_persona"],
+                "beneficiario": row["beneficiario"],
+                "nifCif": row["nif_cif"],
+                "nombre": row["nombre"],
+                "ejercicio": row["ejercicio"],
+                "ayudaETotal": row["ayuda_e_total"],
+            }
+            for row in rows
+        ]
+
+        return {
+            "content": content,
+            "totalElements": total,
+            "totalPages": total_pages,
+            "number": page,
+            "size": page_size,
+        }
+    finally:
+        conn.close()
+
+
+async def get_top_beneficiarios_by_year_async(
+    anio: int,
+    page: int = 0,
+    page_size: int = 20,
+    db_path: str | None = None,
+) -> dict:
+    """Async wrapper for get_top_beneficiarios_by_year."""
+    return await asyncio.to_thread(
+        get_top_beneficiarios_by_year, anio, page, page_size, db_path,
+    )
+
+
+def get_beneficiario_by_nif(
+    nif_cif: str,
+    page: int = 0,
+    page_size: int = 20,
+    db_path: str | None = None,
+) -> dict:
+    """Get beneficiario records by NIF/CIF from local SQLite.
+
+    Args:
+        nif_cif: NIF or CIF identifier.
+        page: Page number (0-indexed).
+        page_size: Results per page.
+        db_path: Override path (useful for tests).
+
+    Returns:
+        Dict in BDNS-compatible paginated format.
+    """
+    conn = _get_connection(db_path)
+    try:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM beneficiarios WHERE nif_cif = ?",
+            (nif_cif,),
+        ).fetchone()[0]
+
+        if total == 0:
+            return _empty_response(page, page_size)
+
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        offset = page * page_size
+
+        rows = conn.execute(
+            """SELECT id_persona, beneficiario, nif_cif, nombre,
+                      ejercicio, ayuda_e_total
+               FROM beneficiarios
+               WHERE nif_cif = ?
+               ORDER BY ejercicio DESC
+               LIMIT ? OFFSET ?""",
+            (nif_cif, page_size, offset),
+        ).fetchall()
+
+        content = [
+            {
+                "idPersona": row["id_persona"],
+                "beneficiario": row["beneficiario"],
+                "nifCif": row["nif_cif"],
+                "nombre": row["nombre"],
+                "ejercicio": row["ejercicio"],
+                "ayudaETotal": row["ayuda_e_total"],
+            }
+            for row in rows
+        ]
+
+        return {
+            "content": content,
+            "totalElements": total,
+            "totalPages": total_pages,
+            "number": page,
+            "size": page_size,
+        }
+    finally:
+        conn.close()
+
+
+async def get_beneficiario_by_nif_async(
+    nif_cif: str,
+    page: int = 0,
+    page_size: int = 20,
+    db_path: str | None = None,
+) -> dict:
+    """Async wrapper for get_beneficiario_by_nif."""
+    return await asyncio.to_thread(
+        get_beneficiario_by_nif, nif_cif, page, page_size, db_path,
+    )
+
+
+def get_available_years(db_path: str | None = None) -> list[int]:
+    """Get distinct years available in the beneficiarios table.
+
+    Args:
+        db_path: Override path (useful for tests).
+
+    Returns:
+        List of years sorted descending.
+    """
+    conn = _get_connection(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT ejercicio FROM beneficiarios ORDER BY ejercicio DESC"
+        ).fetchall()
+        return [row["ejercicio"] for row in rows]
+    finally:
+        conn.close()
+
+
+async def get_available_years_async(db_path: str | None = None) -> list[int]:
+    """Async wrapper for get_available_years."""
+    return await asyncio.to_thread(get_available_years, db_path)
+
+
 def has_data(db_path: str | None = None) -> bool:
     """Check if the beneficiarios table has any records.
 

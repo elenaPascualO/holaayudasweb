@@ -13,7 +13,12 @@ from backend.services.bdns_client import (
     search_convocatorias,
     search_convocatorias_enriched,
 )
-from backend.services.convocatorias_db import get_convocatoria_detail_local
+from backend.services.convocatorias_db import (
+    get_convocatoria_detail_local,
+    get_latest_convocatorias_local_async,
+    has_convocatorias_data,
+    search_convocatorias_local_async,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +66,28 @@ async def search_grants(
         default=None, description="Purpose/theme ID"
     ),
 ) -> dict:
-    """Search grants with filters."""
+    """Search grants with filters. Uses local SQLite first, falls back to BDNS."""
+    # Try local SQLite first
+    if has_convocatorias_data():
+        try:
+            return await search_convocatorias_local_async(
+                q=q,
+                page=page,
+                page_size=pageSize,
+                fecha_desde=fechaDesde,
+                fecha_hasta=fechaHasta,
+                tipo_administracion=tipoAdministracion,
+                regiones=regiones,
+                orden=orden,
+                estado=estado,
+                tipos_beneficiario=tiposBeneficiario,
+                instrumentos=instrumentos,
+                finalidad=finalidad,
+            )
+        except Exception:
+            logger.warning("Local search failed, falling back to BDNS proxy")
+
+    # Fallback to BDNS proxy
     params = {
         "q": q,
         "page": page,
@@ -97,7 +123,15 @@ async def latest_grants(
     page: int = Query(default=0, ge=0, description="Page number (0-indexed)"),
     pageSize: int = Query(default=20, ge=1, le=50, description="Results per page"),
 ) -> dict:
-    """Get latest published grants."""
+    """Get latest published grants. Uses local SQLite first, falls back to BDNS."""
+    # Try local SQLite first
+    if has_convocatorias_data():
+        try:
+            return await get_latest_convocatorias_local_async(page=page, page_size=pageSize)
+        except Exception:
+            logger.warning("Local latest query failed, falling back to BDNS proxy")
+
+    # Fallback to BDNS proxy
     try:
         return await get_latest_convocatorias({"page": page, "pageSize": pageSize})
     except BDNSError as e:

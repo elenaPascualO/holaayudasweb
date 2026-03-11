@@ -24,9 +24,10 @@ async def test_health_check(client):
     assert data["service"] == "holaayudas-api"
 
 
+@patch("backend.routes.convocatorias.has_convocatorias_data", return_value=False)
 @patch("backend.routes.convocatorias.search_convocatorias", new_callable=AsyncMock)
-async def test_search_grants(mock_search, client):
-    """Search endpoint returns paginated results."""
+async def test_search_grants(mock_search, mock_has_data, client):
+    """Search endpoint returns paginated results (BDNS fallback)."""
     mock_search.return_value = {
         "content": [
             {
@@ -51,9 +52,10 @@ async def test_search_grants(mock_search, client):
     mock_search.assert_called_once()
 
 
+@patch("backend.routes.convocatorias.has_convocatorias_data", return_value=False)
 @patch("backend.routes.convocatorias.get_latest_convocatorias", new_callable=AsyncMock)
-async def test_latest_grants(mock_latest, client):
-    """Latest endpoint returns paginated results."""
+async def test_latest_grants(mock_latest, mock_has_data, client):
+    """Latest endpoint returns paginated results (BDNS fallback)."""
     mock_latest.return_value = {
         "content": [{"id": 1, "descripcion": "Latest grant"}],
         "totalElements": 100,
@@ -85,9 +87,10 @@ async def test_grant_detail(mock_detail, client):
     mock_detail.assert_called_once_with("886707")
 
 
+@patch("backend.routes.convocatorias.has_convocatorias_data", return_value=False)
 @patch("backend.routes.convocatorias.search_convocatorias", new_callable=AsyncMock)
-async def test_search_grants_advanced_filters(mock_search, client):
-    """Search endpoint forwards advanced filter params."""
+async def test_search_grants_advanced_filters(mock_search, mock_has_data, client):
+    """Search endpoint forwards advanced filter params (BDNS fallback)."""
     mock_search.return_value = {
         "content": [],
         "totalElements": 0,

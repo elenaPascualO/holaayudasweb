@@ -597,18 +597,316 @@ def _row_to_search_result(row: sqlite3.Row) -> dict:
     Returns:
         Dict matching the BDNS search result format used by GrantCard.
     """
+    # Determine status string from abierto flag
+    abierto = row["abierto"] if "abierto" in row.keys() else None
+    if abierto == 1:
+        status = "open"
+    elif abierto == 0:
+        status = "closed"
+    else:
+        status = "unknown"
+
     return {
         "numeroConvocatoria": row["numero_convocatoria"],
         "descripcion": row["descripcion"],
-        "descripcionLeng": row.get("descripcion_leng") if hasattr(row, "get") else row["descripcion_leng"],
+        "descripcionLeng": row["descripcion_leng"] if "descripcion_leng" in row.keys() else None,
         "fechaRecepcion": row["fecha_recepcion"],
+        # Top-level fields for GrantCard.js (uses grant.nivel1, grant.nivel2)
+        "nivel1": row["nivel1"],
+        "nivel2": row["nivel2"],
+        "nivel3": row["nivel3"],
+        # Nested organo for detail page compatibility
         "organo": {
             "nivel1": row["nivel1"],
             "nivel2": row["nivel2"],
             "nivel3": row["nivel3"],
         },
         "_presupuestoTotal": row["presupuesto_total"],
+        "_status": status,
     }
+
+
+# --- Local-first query functions ---
+
+# Comunidades autónomas for tipo_administracion='A' filter
+_COMUNIDADES_AUTONOMAS = {
+    "ANDALUCIA", "ARAGON", "ASTURIAS", "BALEARS", "CANARIAS",
+    "CANTABRIA", "CASTILLA - LA MANCHA", "CASTILLA Y LEON",
+    "CATALUÑA", "COMUNITAT VALENCIANA", "EXTREMADURA",
+    "GALICIA", "LA RIOJA", "MADRID", "MURCIA", "NAVARRA",
+    "PAIS VASCO", "CEUTA", "MELILLA",
+}
+
+
+def has_convocatorias_data(db_path: str | None = None) -> bool:
+    """Check if the convocatorias table has detail-fetched records.
+
+    Args:
+        db_path: Override path (useful for tests).
+
+    Returns:
+        True if there are records with detail_fetched = 1.
+    """
+    conn = _get_connection(db_path)
+    try:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM convocatorias WHERE detail_fetched = 1"
+        ).fetchone()[0]
+        return total > 0
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def search_convocatorias_local(
+    q: str = "",
+    page: int = 0,
+    page_size: int = 20,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    tipo_administracion: str | None = None,
+    regiones: str | None = None,
+    orden: str | None = None,
+    estado: str | None = None,
+    tipos_beneficiario: str | None = None,
+    instrumentos: str | None = None,
+    finalidad: int | None = None,
+    db_path: str | None = None,
+) -> dict:
+    """Search convocatorias from local SQLite with filters.
+
+    Only searches records with detail_fetched = 1.
+
+    Args:
+        q: Text search query (uses FTS5).
+        page: Page number (0-indexed).
+        page_size: Results per page.
+        fecha_desde: Start date filter (ISO YYYY-MM-DD).
+        fecha_hasta: End date filter (ISO YYYY-MM-DD).
+        tipo_administracion: Admin type: C (central), A (autonomica), L (local).
+        regiones: Comma-separated region IDs.
+        orden: Sort direction: asc or desc.
+        estado: Status filter: abiertas or cerradas.
+        tipos_beneficiario: Comma-separated beneficiary type IDs.
+        instrumentos: Comma-separated instrument type IDs.
+        finalidad: Purpose/theme ID.
+        db_path: Override path (useful for tests).
+
+    Returns:
+        Dict in BDNS Page format: {content, totalElements, totalPages, number, size}.
+    """
+    conn = _get_connection(db_path)
+    try:
+        where_parts: list[str] = ["c.detail_fetched = 1"]
+        params: list = []
+
+        # Text search via FTS5
+        if q and q.strip():
+            fts_query = _build_fts_query(q)
+            if fts_query:
+                where_parts.append(
+                    "c.id IN (SELECT rowid FROM convocatorias_fts WHERE convocatorias_fts MATCH ?)"
+                )
+                params.append(fts_query)
+
+        # Date range
+        if fecha_desde:
+            where_parts.append("c.fecha_recepcion >= ?")
+            params.append(fecha_desde)
+        if fecha_hasta:
+            where_parts.append("c.fecha_recepcion <= ?")
+            params.append(fecha_hasta)
+
+        # Tipo administracion
+        if tipo_administracion:
+            if tipo_administracion == "C":
+                where_parts.append("UPPER(c.nivel1) = 'ESTADO'")
+            elif tipo_administracion == "A":
+                placeholders = ", ".join("?" for _ in _COMUNIDADES_AUTONOMAS)
+                where_parts.append(f"UPPER(c.nivel1) IN ({placeholders})")
+                params.extend(sorted(_COMUNIDADES_AUTONOMAS))
+            elif tipo_administracion == "L":
+                # Local = not central and not autonomica
+                placeholders = ", ".join("?" for _ in _COMUNIDADES_AUTONOMAS)
+                where_parts.append(f"UPPER(c.nivel1) != 'ESTADO' AND UPPER(c.nivel1) NOT IN ({placeholders})")
+                params.extend(sorted(_COMUNIDADES_AUTONOMAS))
+
+        # Regiones filter (JSON array)
+        if regiones:
+            region_ids = [r.strip() for r in regiones.split(",") if r.strip()]
+            if region_ids:
+                region_conditions = []
+                for rid in region_ids:
+                    region_conditions.append(
+                        "EXISTS (SELECT 1 FROM json_each(c.regiones_json) "
+                        "WHERE json_extract(value, '$.id') = ?)"
+                    )
+                    params.append(int(rid))
+                where_parts.append(f"({' OR '.join(region_conditions)})")
+
+        # Instrumentos filter (JSON array)
+        if instrumentos:
+            instr_ids = [i.strip() for i in instrumentos.split(",") if i.strip()]
+            if instr_ids:
+                instr_conditions = []
+                for iid in instr_ids:
+                    instr_conditions.append(
+                        "EXISTS (SELECT 1 FROM json_each(c.instrumentos_json) "
+                        "WHERE json_extract(value, '$.id') = ?)"
+                    )
+                    params.append(int(iid))
+                where_parts.append(f"({' OR '.join(instr_conditions)})")
+
+        # Tipos beneficiario filter (JSON array)
+        if tipos_beneficiario:
+            tb_ids = [t.strip() for t in tipos_beneficiario.split(",") if t.strip()]
+            if tb_ids:
+                tb_conditions = []
+                for tid in tb_ids:
+                    tb_conditions.append(
+                        "EXISTS (SELECT 1 FROM json_each(c.tipos_beneficiarios_json) "
+                        "WHERE json_extract(value, '$.id') = ?)"
+                    )
+                    params.append(int(tid))
+                where_parts.append(f"({' OR '.join(tb_conditions)})")
+
+        # Finalidad (direct comparison)
+        if finalidad is not None:
+            where_parts.append("c.finalidad_id = ?")
+            params.append(finalidad)
+
+        # Estado filter
+        if estado == "abiertas":
+            where_parts.append("c.abierto = 1")
+        elif estado == "cerradas":
+            where_parts.append("c.abierto = 0")
+
+        where_clause = " AND ".join(where_parts)
+
+        # Count total matching
+        count_sql = f"SELECT COUNT(*) FROM convocatorias c WHERE {where_clause}"
+        total = conn.execute(count_sql, params).fetchone()[0]
+
+        if total == 0:
+            return _empty_response(page, page_size)
+
+        total_pages = max(1, (total + page_size - 1) // page_size)
+
+        # Sort
+        order_dir = "ASC" if orden == "asc" else "DESC"
+        order_clause = f"c.fecha_recepcion {order_dir}"
+
+        # Fetch page
+        offset = page * page_size
+        data_sql = f"""
+            SELECT c.numero_convocatoria, c.descripcion, c.descripcion_leng,
+                   c.fecha_recepcion, c.nivel1, c.nivel2, c.nivel3,
+                   c.presupuesto_total, c.abierto
+            FROM convocatorias c
+            WHERE {where_clause}
+            ORDER BY {order_clause}
+            LIMIT ? OFFSET ?
+        """
+        rows = conn.execute(data_sql, [*params, page_size, offset]).fetchall()
+
+        content = [_row_to_search_result(row) for row in rows]
+
+        return {
+            "content": content,
+            "totalElements": total,
+            "totalPages": total_pages,
+            "number": page,
+            "size": page_size,
+        }
+    finally:
+        conn.close()
+
+
+async def search_convocatorias_local_async(
+    q: str = "",
+    page: int = 0,
+    page_size: int = 20,
+    fecha_desde: str | None = None,
+    fecha_hasta: str | None = None,
+    tipo_administracion: str | None = None,
+    regiones: str | None = None,
+    orden: str | None = None,
+    estado: str | None = None,
+    tipos_beneficiario: str | None = None,
+    instrumentos: str | None = None,
+    finalidad: int | None = None,
+    db_path: str | None = None,
+) -> dict:
+    """Async wrapper for search_convocatorias_local."""
+    return await asyncio.to_thread(
+        search_convocatorias_local,
+        q, page, page_size, fecha_desde, fecha_hasta,
+        tipo_administracion, regiones, orden, estado,
+        tipos_beneficiario, instrumentos, finalidad, db_path,
+    )
+
+
+def get_latest_convocatorias_local(
+    page: int = 0,
+    page_size: int = 20,
+    db_path: str | None = None,
+) -> dict:
+    """Get latest convocatorias from local SQLite.
+
+    Args:
+        page: Page number (0-indexed).
+        page_size: Results per page.
+        db_path: Override path (useful for tests).
+
+    Returns:
+        Dict in BDNS Page format.
+    """
+    conn = _get_connection(db_path)
+    try:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM convocatorias WHERE detail_fetched = 1"
+        ).fetchone()[0]
+
+        if total == 0:
+            return _empty_response(page, page_size)
+
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        offset = page * page_size
+
+        rows = conn.execute(
+            """SELECT numero_convocatoria, descripcion, descripcion_leng,
+                      fecha_recepcion, nivel1, nivel2, nivel3,
+                      presupuesto_total, abierto
+               FROM convocatorias
+               WHERE detail_fetched = 1
+               ORDER BY fecha_recepcion DESC
+               LIMIT ? OFFSET ?""",
+            (page_size, offset),
+        ).fetchall()
+
+        content = [_row_to_search_result(row) for row in rows]
+
+        return {
+            "content": content,
+            "totalElements": total,
+            "totalPages": total_pages,
+            "number": page,
+            "size": page_size,
+        }
+    finally:
+        conn.close()
+
+
+async def get_latest_convocatorias_local_async(
+    page: int = 0,
+    page_size: int = 20,
+    db_path: str | None = None,
+) -> dict:
+    """Async wrapper for get_latest_convocatorias_local."""
+    return await asyncio.to_thread(
+        get_latest_convocatorias_local, page, page_size, db_path,
+    )
 
 
 # --- Analytics queries ---
@@ -702,6 +1000,7 @@ def analytics_by_theme(
 
         rows = conn.execute(
             f"""SELECT descripcion_finalidad as theme,
+                       finalidad_id,
                        COUNT(*) as count,
                        COALESCE(SUM(presupuesto_total), 0) as budget
                 FROM convocatorias
@@ -711,7 +1010,10 @@ def analytics_by_theme(
                 LIMIT ?""",
             params,
         ).fetchall()
-        return [{"label": row["theme"], "count": row["count"], "budget": row["budget"]} for row in rows]
+        return [
+            {"label": row["theme"], "code": row["finalidad_id"], "count": row["count"], "budget": row["budget"]}
+            for row in rows
+        ]
     finally:
         conn.close()
 
@@ -763,17 +1065,22 @@ def analytics_by_region(
                 continue
             budget = row["presupuesto_total"] or 0
             for region in regions:
-                name = region.get("descripcion", "") if isinstance(region, dict) else str(region)
+                if isinstance(region, dict):
+                    name = region.get("descripcion", "")
+                    code = region.get("codigo", "")
+                else:
+                    name = str(region)
+                    code = ""
                 if not name:
                     continue
                 if name not in region_counts:
-                    region_counts[name] = {"count": 0, "budget": 0}
+                    region_counts[name] = {"count": 0, "budget": 0, "code": code}
                 region_counts[name]["count"] += 1
                 region_counts[name]["budget"] += budget
 
         sorted_regions = sorted(region_counts.items(), key=lambda x: x[1]["count"], reverse=True)
         return [
-            {"label": name, "count": data["count"], "budget": data["budget"]}
+            {"label": name, "code": data["code"], "count": data["count"], "budget": data["budget"]}
             for name, data in sorted_regions[:limit]
         ]
     finally:
