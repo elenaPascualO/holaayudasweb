@@ -312,11 +312,7 @@ export function initAnalyticsCharts() {
           if (elements.length > 0) {
             const idx = elements[0].index
             const theme = byTheme[idx]
-            if (theme.code) {
-              navigate(`/buscar?finalidad=${theme.code}`)
-            } else {
-              navigate(`/buscar?q=${encodeURIComponent(theme.label)}`)
-            }
+            navigate(`/buscar?descripcionFinalidad=${encodeURIComponent(theme.label)}`)
           }
         },
       },
@@ -350,11 +346,7 @@ export function initAnalyticsCharts() {
           if (elements.length > 0) {
             const idx = elements[0].index
             const region = byRegion[idx]
-            if (region.code) {
-              navigate(`/buscar?regiones=${encodeURIComponent(region.code)}`)
-            } else {
-              navigate(`/buscar?q=${encodeURIComponent(region.label)}`)
-            }
+            navigate(`/buscar?regionDesc=${encodeURIComponent(region.label)}`)
           }
         },
       },
@@ -382,8 +374,8 @@ export function initAnalyticsCharts() {
         onClick: (_, elements) => {
           if (elements.length > 0) {
             const idx = elements[0].index
-            const abierto = idx === 0 ? 'true' : 'false'
-            navigate(`/buscar?abierto=${abierto}`)
+            const estado = idx === 0 ? 'abiertas' : 'cerradas'
+            navigate(`/buscar?estado=${estado}`)
           }
         },
       },

@@ -41,8 +41,12 @@ export async function renderSearchPage(params) {
       })
     } else {
       // No query — fall back to legacy BDNS search for browsing
+      // Skip default date filter when analytics drill-down filters are present
+      const hasAnalyticsFilter = params.descripcionFinalidad || params.regionDesc || params.estado
       const now = new Date()
-      const defaultFechaDesde = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+      const defaultFechaDesde = hasAnalyticsFilter
+        ? undefined
+        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
       const fechaDesde = params.fechaDesde ?? defaultFechaDesde
 
       results = await searchGrants({
@@ -58,6 +62,8 @@ export async function renderSearchPage(params) {
         instrumentos: params.instrumentos,
         tiposBeneficiario: params.tiposBeneficiario,
         finalidad: params.finalidad,
+        descripcionFinalidad: params.descripcionFinalidad,
+        regionDesc: params.regionDesc,
       })
     }
   } catch {
@@ -108,6 +114,8 @@ export async function renderSearchPage(params) {
     if (params.regiones) baseParams.set('regiones', params.regiones)
     if (params.orden) baseParams.set('orden', params.orden)
     if (params.estado) baseParams.set('estado', params.estado)
+    if (params.descripcionFinalidad) baseParams.set('descripcionFinalidad', params.descripcionFinalidad)
+    if (params.regionDesc) baseParams.set('regionDesc', params.regionDesc)
   }
   const baseUrl = `/buscar?${baseParams.toString()}`
 
@@ -126,6 +134,9 @@ export async function renderSearchPage(params) {
           <p class="text-sm text-gray-400">
             ${formatNumber(results.totalElements)} resultados
             ${q ? ` para "${q}"` : ''}
+            ${params.descripcionFinalidad ? ` de "${params.descripcionFinalidad}"` : ''}
+            ${params.regionDesc ? ` en "${params.regionDesc}"` : ''}
+            ${params.estado ? ` (${params.estado})` : ''}
             ${hasScores ? ' <span class="text-primary/60">· ordenados por relevancia</span>' : ''}
           </p>
           ${!useSemanticSearch ? `

@@ -65,6 +65,12 @@ async def search_grants(
     finalidad: int | None = Query(
         default=None, description="Purpose/theme ID"
     ),
+    descripcionFinalidad: str | None = Query(
+        default=None, description="Theme description text filter"
+    ),
+    regionDesc: str | None = Query(
+        default=None, description="Region description text filter"
+    ),
 ) -> dict:
     """Search grants with filters. Uses local SQLite first, falls back to BDNS."""
     # Try local SQLite first
@@ -83,6 +89,8 @@ async def search_grants(
                 tipos_beneficiario=tiposBeneficiario,
                 instrumentos=instrumentos,
                 finalidad=finalidad,
+                descripcion_finalidad=descripcionFinalidad,
+                region_desc=regionDesc,
             )
         except Exception:
             logger.warning("Local search failed, falling back to BDNS proxy")

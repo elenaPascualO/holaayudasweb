@@ -672,6 +672,8 @@ def search_convocatorias_local(
     tipos_beneficiario: str | None = None,
     instrumentos: str | None = None,
     finalidad: int | None = None,
+    descripcion_finalidad: str | None = None,
+    region_desc: str | None = None,
     db_path: str | None = None,
 ) -> dict:
     """Search convocatorias from local SQLite with filters.
@@ -691,6 +693,8 @@ def search_convocatorias_local(
         tipos_beneficiario: Comma-separated beneficiary type IDs.
         instrumentos: Comma-separated instrument type IDs.
         finalidad: Purpose/theme ID.
+        descripcion_finalidad: Theme description text filter.
+        region_desc: Region description text filter.
         db_path: Override path (useful for tests).
 
     Returns:
@@ -776,6 +780,19 @@ def search_convocatorias_local(
             where_parts.append("c.finalidad_id = ?")
             params.append(finalidad)
 
+        # Finalidad by description text (used by analytics drill-down)
+        if descripcion_finalidad:
+            where_parts.append("c.descripcion_finalidad = ?")
+            params.append(descripcion_finalidad)
+
+        # Region by description text (used by analytics drill-down)
+        if region_desc:
+            where_parts.append(
+                "EXISTS (SELECT 1 FROM json_each(c.regiones_json) "
+                "WHERE json_extract(value, '$.descripcion') = ?)"
+            )
+            params.append(region_desc)
+
         # Estado filter
         if estado == "abiertas":
             where_parts.append("c.abierto = 1")
@@ -836,6 +853,8 @@ async def search_convocatorias_local_async(
     tipos_beneficiario: str | None = None,
     instrumentos: str | None = None,
     finalidad: int | None = None,
+    descripcion_finalidad: str | None = None,
+    region_desc: str | None = None,
     db_path: str | None = None,
 ) -> dict:
     """Async wrapper for search_convocatorias_local."""
@@ -843,7 +862,8 @@ async def search_convocatorias_local_async(
         search_convocatorias_local,
         q, page, page_size, fecha_desde, fecha_hasta,
         tipo_administracion, regiones, orden, estado,
-        tipos_beneficiario, instrumentos, finalidad, db_path,
+        tipos_beneficiario, instrumentos, finalidad,
+        descripcion_finalidad, region_desc, db_path,
     )
 
 
