@@ -24,8 +24,12 @@ _last_result_by_mode: dict[str, dict] = {}
 
 def _validate_token(authorization: str) -> None:
     """Validate admin bearer token."""
+    if not ADMIN_SECRET:
+        logger.error("ADMIN_SECRET is not set — rejecting admin request")
+        raise HTTPException(status_code=401, detail="Unauthorized")
     expected = f"Bearer {ADMIN_SECRET}"
-    if not ADMIN_SECRET or authorization != expected:
+    if authorization != expected:
+        logger.warning("Invalid admin token received (length=%d)", len(authorization))
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -37,6 +41,7 @@ def _update_sync_progress(progress: dict) -> None:
 async def _run_sync_background(mode: str) -> None:
     """Run sync in background, updating _sync_state on completion or failure."""
     global _sync_state
+    logger.info("Background sync starting: mode=%s", mode)
     try:
         from backend.scripts.sync_convocatorias import run_sync
 
@@ -49,6 +54,7 @@ async def _run_sync_background(mode: str) -> None:
         }
         _sync_state = finished
         _last_result_by_mode[mode] = finished
+        logger.info("Background sync completed: mode=%s result=%s", mode, result)
     except asyncio.CancelledError:
         finished = {
             "status": "cancelled",
@@ -126,6 +132,7 @@ async def trigger_convocatorias_sync(
     """
     global _sync_state, _sync_task
 
+    logger.info("Received convocatorias sync request: mode=%s", mode)
     _validate_token(authorization)
 
     valid_modes = {"daily", "full-list", "backfill-detail", "backfill-embeddings"}
@@ -136,6 +143,7 @@ async def trigger_convocatorias_sync(
         )
 
     if _sync_state.get("status") == "running":
+        logger.info("Sync already running, skipping")
         return {"status": "skipped", "reason": "Convocatorias sync already in progress"}
 
     # Embeddings depend on detail — skip if last detail run failed
@@ -161,6 +169,7 @@ async def trigger_convocatorias_sync(
         "progress": {},
     }
     _sync_task = asyncio.create_task(_run_sync_background(mode))
+    logger.info("Background sync task created: mode=%s", mode)
 
     return {"status": "started", "mode": mode}
 
@@ -171,6 +180,7 @@ async def get_convocatorias_sync_status(
 ) -> dict:
     """Return current state of the convocatorias sync task."""
     _validate_token(authorization)
+    logger.info("Sync status queried: %s", _sync_state.get("status"))
     return _sync_state
 
 
