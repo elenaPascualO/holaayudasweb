@@ -137,14 +137,12 @@ async def fetch_all_for_year(
     return records
 
 
-async def run_sync() -> None:
-    """Main sync entrypoint: fetch all data and write to SQLite."""
-    start = time.monotonic()
-    logger.info("Starting beneficiarios sync...")
+async def _fetch_all_records() -> list[dict]:
+    """Fetch all beneficiarios records from BDNS API.
 
-    # Ensure DB schema exists
-    init_db()
-
+    Returns:
+        All beneficiary records across all years.
+    """
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
     async with httpx.AsyncClient(
@@ -152,15 +150,49 @@ async def run_sync() -> None:
         timeout=REQUEST_TIMEOUT,
         headers={"Accept": "application/json"},
     ) as client:
-        # Get available years
         years = await fetch_years(client)
         logger.info("Available years: %s", years)
 
-        # Fetch all records for all years
         all_records: list[dict] = []
         for year in years:
             year_records = await fetch_all_for_year(client, semaphore, year)
             all_records.extend(year_records)
+
+    return all_records
+
+
+MAX_RETRIES = 3
+RETRY_DELAY = 60  # seconds between retries
+
+
+async def run_sync() -> None:
+    """Main sync entrypoint: fetch all data and write to SQLite.
+
+    Retries the full download up to MAX_RETRIES times with RETRY_DELAY
+    between attempts. Only writes to SQLite if the download succeeds.
+    """
+    start = time.monotonic()
+    logger.info("Starting beneficiarios sync...")
+
+    # Ensure DB schema exists
+    init_db()
+
+    # Fetch with retries
+    all_records = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            all_records = await _fetch_all_records()
+            break
+        except Exception as e:
+            if attempt < MAX_RETRIES:
+                logger.warning(
+                    "Fetch attempt %d/%d failed: %s. Retrying in %ds...",
+                    attempt, MAX_RETRIES, e, RETRY_DELAY,
+                )
+                await asyncio.sleep(RETRY_DELAY)
+            else:
+                logger.error("All %d fetch attempts failed: %s", MAX_RETRIES, e)
+                raise
 
     logger.info("Total records fetched: %d", len(all_records))
 
