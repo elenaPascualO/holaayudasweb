@@ -160,6 +160,14 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 - [x] Detalle servido desde SQLite local → fallback a BDNS proxy
 - [x] `init_convocatorias_db()` en app startup
 
+### Migracion Local-First (BDNS → SQLite)
+- [x] Busqueda con filtros (`/api/convocatorias`) servida desde SQLite local con todos los filtros (texto FTS5, fechas, tipo admin, regiones, instrumentos, tiposBeneficiario, finalidad, estado, orden)
+- [x] Ultimas convocatorias (`/api/convocatorias/ultimas`) servidas desde SQLite local
+- [x] Top beneficiarios por año (`/api/beneficiarios-top?anio=X`) servidos desde SQLite local
+- [x] Beneficiario por NIF/CIF (`/api/beneficiarios-top?nifCif=X`) servido desde SQLite local
+- [x] Años disponibles (`/api/beneficiarios-top/anios`) servidos desde SQLite local
+- [x] Fallback automatico a BDNS proxy si la DB local esta vacia o falla
+
 ### Busqueda Semantica
 - [x] Embeddings con OpenAI `text-embedding-3-small` (1536 dims)
 - [x] Almacenados como BLOBs en SQLite (`embedding` column)

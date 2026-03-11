@@ -3,7 +3,7 @@
 ## 1. Resumen
 
 **Nombre del producto:** Hola Ayudas
-**Version:** 0.3.0 (Fase 3 - Replica Local + Semantica + Analytics)
+**Version:** 0.3.2 (Fase 3 - Replica Local + Semantica + Analytics + Local-First)
 **Proposito:** Interfaz web moderna y user-friendly para buscar ayudas y subvenciones publicas españolas a traves de la API publica de BDNS.
 
 ### 1.1 Vision
@@ -13,7 +13,7 @@ Ofrecer una forma rapida, bonita e intuitiva de buscar y explorar ayudas y subve
 Los enlaces de Hola Ayudas se incluiran en las publicaciones de HolaDatos sobre ayudas, permitiendo a los usuarios buscar y explorar convocatorias relacionadas con una experiencia superior.
 
 ### 1.3 Estado Actual
-Fase 3 completada. Replica local de convocatorias en SQLite, busqueda semantica con embeddings OpenAI, y dashboard de analytics con Chart.js. Ver `doc/ROADMAP.md` para detalle de fases y `doc/KILLER_PLAN.md` para el plan de replica + IA.
+Fase 3 completada. Replica local de convocatorias en SQLite, busqueda semantica con embeddings OpenAI, dashboard de analytics con Chart.js, y migracion local-first (SQLite como fuente primaria para busquedas, ultimas, y beneficiarios con fallback a BDNS). Ver `doc/ROADMAP.md` para detalle de fases y `doc/KILLER_PLAN.md` para el plan de replica + IA.
 
 ---
 
@@ -195,21 +195,22 @@ Campos de respuesta por item:
 
 ### 3.3 API del Proxy Backend
 
-El backend actua como proxy transparente con cache. Transforma las respuestas de la API BDNS de forma minima, encargandose de:
+El backend sirve datos desde la replica local SQLite como fuente primaria, con fallback automatico a la API BDNS upstream si la DB local esta vacia o falla. Ademas se encarga de:
 - CORS (permite el origen del frontend)
-- Cache (reduce carga en los servidores del gobierno)
-- Transformacion de formato de fecha (el frontend envia ISO, el backend convierte a `dd/mm/yyyy`)
+- Cache (reduce carga en los servidores del gobierno para los pocos endpoints que aun usan BDNS directamente)
+- Transformacion de formato de fecha (el frontend envia ISO, el backend convierte a `dd/mm/yyyy` para BDNS)
 - Manejo de errores (traduce errores de BDNS a mensajes amigables)
 
 #### Endpoints del Proxy
 
 | Nuestro Endpoint | Upstream | Cache TTL |
 |-----------------|----------|-----------|
-| `GET /api/convocatorias` | `/convocatorias/busqueda` | 5 min |
-| `GET /api/convocatorias/ultimas` | `/convocatorias/ultimas` | 5 min |
+| `GET /api/convocatorias` | SQLite local → fallback `/convocatorias/busqueda` | - |
+| `GET /api/convocatorias/ultimas` | SQLite local → fallback `/convocatorias/ultimas` | - |
 | `GET /api/convocatorias/:id` | SQLite local → fallback `/convocatorias?numConv=X` | 1 hora |
 | `GET /api/concesiones` | `/concesiones/busqueda` | 5 min |
-| `GET /api/beneficiarios-top` | `/grandesbeneficiarios/busqueda` o SQLite FTS5 (si `q` presente) | 1 hora |
+| `GET /api/beneficiarios-top` | SQLite local (todos los paths) → fallback `/grandesbeneficiarios/busqueda` | - |
+| `GET /api/beneficiarios-top/anios` | SQLite local → fallback `/grandesbeneficiarios/anios` | - |
 | `GET /api/catalogo/regiones` | `/regiones` | 24 horas |
 | `GET /api/catalogo/finalidades` | `/finalidades?vpd=GE` | 24 horas |
 | `GET /api/catalogo/instrumentos` | `/instrumentos` | 24 horas |
@@ -364,3 +365,4 @@ BDNS_BASE_URL=https://www.infosubvenciones.es/bdnstrans/api
 | 0.2.0 | 2026-02 | Fase 2: Transparencia (grandes beneficiarios, SQLite FTS5 para beneficiarios) |
 | 0.3.0 | 2026-03 | Fase 3: Replica local convocatorias en SQLite, busqueda semantica (OpenAI embeddings + numpy coseno), dashboard analytics (Chart.js), nuevos endpoints /api/search y /api/analytics/* |
 | 0.3.1 | 2026-03 | Sync en background: POST /sync/convocatorias lanza tarea async y retorna inmediatamente, nuevo GET /sync/convocatorias/status para monitorizar progreso |
+| 0.3.2 | 2026-03 | Migracion local-first: busqueda, ultimas y beneficiarios servidos desde SQLite local con fallback a BDNS. Fix _row_to_search_result() para exponer nivel1/nivel2/nivel3 como campos top-level |

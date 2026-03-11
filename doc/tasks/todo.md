@@ -23,6 +23,25 @@ Pasos para activar la Fase 3 en produccion (Railway):
 
 ## Completadas
 
+### Migracion endpoints BDNS proxy a SQLite local — COMPLETADA
+
+Endpoints migrados a local-first (SQLite como fuente primaria, BDNS como fallback):
+
+- `GET /api/convocatorias` — busqueda con todos los filtros (texto FTS5, fechas, tipo admin, regiones, instrumentos, tiposBeneficiario, finalidad, estado, orden)
+- `GET /api/convocatorias/ultimas` — ultimas convocatorias publicadas
+- `GET /api/beneficiarios-top?anio=X` — top beneficiarios por año
+- `GET /api/beneficiarios-top?nifCif=X` — beneficiario por NIF/CIF
+- `GET /api/beneficiarios-top/anios` — años disponibles
+
+Bug corregido: `_row_to_search_result()` no exponía `nivel1`/`nivel2`/`nivel3` como campos top-level, causando que GrantCard mostrara el convocante vacío en resultados de SQLite local.
+
+Archivos modificados:
+- `convocatorias_db.py`: Fix `_row_to_search_result()` + `has_convocatorias_data()` + `search_convocatorias_local()` + `get_latest_convocatorias_local()` + async wrappers
+- `beneficiarios_db.py`: `get_top_beneficiarios_by_year()` + `get_beneficiario_by_nif()` + `get_available_years()` + async wrappers
+- `convocatorias.py`: `search_grants()` y `latest_grants()` usan local-first con fallback
+- `beneficiarios.py`: `get_top_beneficiaries()` (path 3) y `get_years()` usan local-first con fallback
+- Tests actualizados para mockear `has_data`/`has_convocatorias_data` en tests de fallback BDNS
+
 ### Sync en background con endpoint de estado — COMPLETADA
 
 El endpoint `POST /api/admin/sync/convocatorias` ahora lanza el sync como tarea async en background y retorna inmediatamente `{"status": "started"}`. Esto evita que Railway corte la peticion HTTP por timeout (~5 min).
