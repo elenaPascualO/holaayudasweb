@@ -23,6 +23,22 @@ Pasos para activar la Fase 3 en produccion (Railway):
 
 ## Completadas
 
+### Fix drill-down desde graficas de analytics — COMPLETADA
+
+Los clicks en las graficas de estadísticas generaban URLs incorrectas para la pagina de busqueda:
+
+1. **Region**: BDNS solo devuelve `descripcion` en regiones (sin ID numerico ni `codigo`). El click caia en busqueda semantica `q=ES613 - Córdoba` → sin resultados.
+2. **Tematica**: `finalidad_id` siempre NULL (BDNS no lo devuelve en el detalle). El click caia en busqueda semantica `q=Agricultura...` → max 20 resultados.
+3. **Estado**: El chart navegaba con `abierto=true/false` pero la busqueda no-semantica usa `estado`.
+
+**Solucion:** Nuevos filtros `descripcionFinalidad` y `regionDesc` en el endpoint `/api/convocatorias` que hacen match exacto por texto (valido porque el valor viene del propio `GROUP BY` de analytics). Status chart ahora usa `estado=abiertas/cerradas`. Se omite el filtro de fecha por defecto al venir de analytics.
+
+Archivos modificados:
+- `convocatorias_db.py`: Nuevos filtros `descripcion_finalidad` y `region_desc` en `search_convocatorias_local()`
+- `convocatorias.py`: Nuevos query params `descripcionFinalidad` y `regionDesc`
+- `analytics.js`: Charts navegan con params correctos (region, tema, estado)
+- `search.js`: Pasa nuevos params al backend, omite filtro de fecha por defecto para drill-down
+
 ### Migracion endpoints BDNS proxy a SQLite local — COMPLETADA
 
 Endpoints migrados a local-first (SQLite como fuente primaria, BDNS como fallback):

@@ -3,7 +3,7 @@
 ## 1. Resumen
 
 **Nombre del producto:** Hola Ayudas
-**Version:** 0.3.2 (Fase 3 - Replica Local + Semantica + Analytics + Local-First)
+**Version:** 0.3.3 (Fase 3 - Replica Local + Semantica + Analytics + Local-First)
 **Proposito:** Interfaz web moderna y user-friendly para buscar ayudas y subvenciones publicas españolas a traves de la API publica de BDNS.
 
 ### 1.1 Vision
@@ -366,3 +366,4 @@ BDNS_BASE_URL=https://www.infosubvenciones.es/bdnstrans/api
 | 0.3.0 | 2026-03 | Fase 3: Replica local convocatorias en SQLite, busqueda semantica (OpenAI embeddings + numpy coseno), dashboard analytics (Chart.js), nuevos endpoints /api/search y /api/analytics/* |
 | 0.3.1 | 2026-03 | Sync en background: POST /sync/convocatorias lanza tarea async y retorna inmediatamente, nuevo GET /sync/convocatorias/status para monitorizar progreso |
 | 0.3.2 | 2026-03 | Migracion local-first: busqueda, ultimas y beneficiarios servidos desde SQLite local con fallback a BDNS. Fix _row_to_search_result() para exponer nivel1/nivel2/nivel3 como campos top-level |
+| 0.3.3 | 2026-03 | Fix drill-down desde graficas de analytics: nuevos filtros `descripcionFinalidad` y `regionDesc` en `/api/convocatorias`, status chart usa `estado` en vez de `abierto` |
