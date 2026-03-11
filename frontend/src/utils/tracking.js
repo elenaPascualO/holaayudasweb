@@ -4,13 +4,19 @@
  */
 
 /**
- * Check if running on localhost (skip tracking in dev).
+ * Check if tracking should be skipped (localhost or manually disabled).
+ * Disable in your browser: localStorage.setItem('umami.disabled', '1')
  * @returns {boolean}
  */
-function isLocalhost() {
-  if (typeof window === 'undefined') return false
+function isTrackingDisabled() {
+  if (typeof window === 'undefined') return true
   const hostname = window.location.hostname
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0'
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0') return true
+  try {
+    return localStorage.getItem('umami.disabled') === '1'
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -19,7 +25,7 @@ function isLocalhost() {
  * @param {Object} [data] - Additional event data
  */
 export function track(event, data = {}) {
-  if (typeof window !== 'undefined' && window.umami && !isLocalhost()) {
+  if (typeof window !== 'undefined' && window.umami && !isTrackingDisabled()) {
     window.umami.track(event, data)
   }
 }

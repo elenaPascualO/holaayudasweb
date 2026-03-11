@@ -29,6 +29,14 @@
     <!-- Chart.js for analytics dashboard -->
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <!-- Umami Analytics (privacy-focused, no cookies) -->
-    <script defer src="https://cloud.umami.is/script.js" data-website-id="152e818d-8172-48a9-8925-4dfbc93f5172"></script>
+    <!-- Disable tracking: localStorage.setItem('umami.disabled', '1') in browser console -->
+    <script>
+      try { if (localStorage.getItem('umami.disabled') !== '1') {
+        var s = document.createElement('script'); s.defer = true;
+        s.src = 'https://cloud.umami.is/script.js';
+        s.dataset.websiteId = '152e818d-8172-48a9-8925-4dfbc93f5172';
+        document.body.appendChild(s);
+      }} catch(e) {}
+    </script>
   </body>
 </html>
