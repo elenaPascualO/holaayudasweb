@@ -11,6 +11,7 @@ Modes:
 """
 
 import asyncio
+import json
 import logging
 import sqlite3
 import sys
@@ -38,7 +39,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MAX_CONCURRENT = 5
+MAX_CONCURRENT = 3
 PAGE_SIZE = 50
 REQUEST_TIMEOUT = 30.0
 DETAIL_BATCH_SIZE = 30_000
@@ -80,12 +81,13 @@ async def fetch_search_page(
                     continue
                 response.raise_for_status()
                 return response.json()
-            except (httpx.HTTPError, httpx.TimeoutException) as e:
+            except (httpx.HTTPError, httpx.TimeoutException, json.JSONDecodeError) as e:
                 if attempt < 2:
                     logger.warning("Error on page %d: %s, retrying", page, e)
                     await asyncio.sleep(1.0 * (attempt + 1))
                 else:
-                    raise
+                    logger.error("Failed page %d after retries: %s", page, e)
+                    return {"content": [], "totalPages": 0}
         return {"content": [], "totalPages": 0}
 
 
@@ -119,7 +121,7 @@ async def fetch_detail(
                     return None
                 response.raise_for_status()
                 return response.json()
-            except (httpx.HTTPError, httpx.TimeoutException) as e:
+            except (httpx.HTTPError, httpx.TimeoutException, json.JSONDecodeError) as e:
                 if attempt < 2:
                     logger.warning("Error fetching detail %s: %s, retrying", numero, e)
                     await asyncio.sleep(1.0 * (attempt + 1))
@@ -285,6 +287,9 @@ async def sync_backfill_detail(
             "detail_fetched": 0,
         })
 
+    consecutive_empty = 0
+    max_consecutive_empty = 3  # Stop if 3 batches in a row return nothing
+
     async with httpx.AsyncClient(
         base_url=BDNS_BASE_URL,
         timeout=REQUEST_TIMEOUT,
@@ -297,10 +302,31 @@ async def sync_backfill_detail(
             tasks = [fetch_detail(client, semaphore, numero) for numero in batch]
             results = await asyncio.gather(*tasks)
 
+            batch_fetched = 0
             for numero, detail in zip(batch, results):
                 if detail is not None:
                     update_convocatoria_detail(numero, detail)
                     fetched += 1
+                    batch_fetched += 1
+
+            # Detect silent rate limiting (all requests in batch returned empty)
+            if batch_fetched == 0:
+                consecutive_empty += 1
+                logger.warning(
+                    "Batch %d-%d returned 0 details (%d consecutive empty)",
+                    batch_start, batch_start + len(batch), consecutive_empty,
+                )
+                if consecutive_empty >= max_consecutive_empty:
+                    logger.error(
+                        "Stopping detail backfill: %d consecutive empty batches "
+                        "(likely rate-limited). Fetched %d/%d so far.",
+                        consecutive_empty, fetched, len(ids),
+                    )
+                    break
+                # Back off more aggressively when seeing empty responses
+                await asyncio.sleep(2.0)
+            else:
+                consecutive_empty = 0
 
             if progress_callback:
                 progress_callback({
@@ -311,7 +337,7 @@ async def sync_backfill_detail(
 
             if batch_start > 0 and batch_start % 500 == 0:
                 logger.info("Detail progress: %d/%d", fetched, len(ids))
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.3)
 
     logger.info("Detail backfill complete: %d/%d fetched", fetched, len(ids))
 

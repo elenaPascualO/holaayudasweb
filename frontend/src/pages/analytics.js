@@ -70,6 +70,16 @@ export async function renderAnalyticsPage(params = {}) {
             </div>
           </div>
 
+          <!-- Budget by year -->
+          <div class="bg-white rounded-xl border border-gray-100 p-6">
+            <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">
+              Presupuesto total por año
+            </h2>
+            <div class="h-72">
+              <canvas id="chart-budget-by-year"></canvas>
+            </div>
+          </div>
+
           <!-- Monthly trend -->
           <div class="bg-white rounded-xl border border-gray-100 p-6">
             <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">
@@ -246,6 +256,41 @@ export function initAnalyticsCharts() {
         plugins: { legend: { display: false } },
         scales: {
           y: { beginAtZero: true, ticks: { callback: v => formatNumber(v) } },
+        },
+        onClick: (_, elements) => {
+          if (elements.length > 0) {
+            const idx = elements[0].index
+            const year = byYear[idx].label
+            navigate(`/buscar?yearFrom=${year}&yearTo=${year}`)
+          }
+        },
+      },
+    })
+  }
+
+  // Budget by year — bar chart
+  const budgetYearCtx = document.getElementById('chart-budget-by-year')
+  if (budgetYearCtx && byYear.length > 0) {
+    new Chart(budgetYearCtx, {
+      type: 'bar',
+      data: {
+        labels: byYear.map(d => d.label),
+        datasets: [{
+          label: 'Presupuesto',
+          data: byYear.map(d => d.budget),
+          backgroundColor: '#10b981',
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { callback: v => formatCurrency(v) },
+          },
         },
         onClick: (_, elements) => {
           if (elements.length > 0) {
