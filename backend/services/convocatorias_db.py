@@ -932,14 +932,67 @@ async def get_latest_convocatorias_local_async(
 # --- Analytics queries ---
 
 
+# Total net tax revenue (recaudación tributaria líquida) by year in euros.
+# Source: AEAT — Informes Anuales de Recaudación Tributaria
+# https://sede.agenciatributaria.gob.es/Sede/datosabiertos/catalogo/hacienda/Informes_anuales_de_Recaudacion_Tributaria.shtml
+TAX_REVENUE_BY_YEAR: dict[str, dict] = {
+    "2014": {
+        "amount": 174_987_000_000,
+        "source_url": "https://sede.agenciatributaria.gob.es/Sede/estadisticas/recaudacion-tributaria/informe-anual/ejercicio-2014/resumen.html",
+    },
+    "2015": {
+        "amount": 182_009_000_000,
+        "source_url": "https://sede.agenciatributaria.gob.es/Sede/estadisticas/recaudacion-tributaria/informe-anual/ejercicio-2015/resumen.html",
+    },
+    "2016": {
+        "amount": 186_249_000_000,
+        "source_url": "https://sede.agenciatributaria.gob.es/Sede/estadisticas/recaudacion-tributaria/informe-anual/ejercicio-2016/resumen.html",
+    },
+    "2017": {
+        "amount": 193_951_000_000,
+        "source_url": "https://sede.agenciatributaria.gob.es/Sede/estadisticas/recaudacion-tributaria/informe-anual/ejercicio-2017/resumen.html",
+    },
+    "2018": {
+        "amount": 208_685_000_000,
+        "source_url": "https://sede.agenciatributaria.gob.es/Sede/estadisticas/recaudacion-tributaria/informe-anual/ejercicio-2018/resumen.html",
+    },
+    "2019": {
+        "amount": 212_808_000_000,
+        "source_url": "https://sede.agenciatributaria.gob.es/Sede/estadisticas/recaudacion-tributaria/informe-anual/ejercicio-2019/resumen.html",
+    },
+    "2020": {
+        "amount": 194_051_000_000,
+        "source_url": "https://sede.agenciatributaria.gob.es/Sede/estadisticas/recaudacion-tributaria/informe-anual/ejercicio-2020/resumen.html",
+    },
+    "2021": {
+        "amount": 223_385_000_000,
+        "source_url": "https://sede.agenciatributaria.gob.es/Sede/estadisticas/recaudacion-tributaria/informe-anual/ejercicio-2021/resumen.html",
+    },
+    "2022": {
+        "amount": 255_463_000_000,
+        "source_url": "https://sede.agenciatributaria.gob.es/Sede/estadisticas/recaudacion-tributaria/informe-anual/ejercicio-2022/resumen.html",
+    },
+    "2023": {
+        "amount": 271_935_000_000,
+        "source_url": "https://sede.agenciatributaria.gob.es/Sede/estadisticas/recaudacion-tributaria/informe-anual/ejercicio-2023/resumen.html",
+    },
+    "2024": {
+        "amount": 294_734_000_000,
+        "source_url": "https://sede.agenciatributaria.gob.es/Sede/estadisticas/recaudacion-tributaria/informe-anual/ejercicio-2024/resumen.html",
+    },
+}
+
+
 def analytics_by_year(db_path: str | None = None) -> list[dict]:
     """Count convocatorias and sum budget by year.
+
+    Includes tax revenue reference data from AEAT for context.
 
     Args:
         db_path: Override path (useful for tests).
 
     Returns:
-        List of {label, count, budget} sorted by year.
+        List of {label, count, budget, tax_revenue, tax_source_url} sorted by year.
     """
     conn = _get_connection(db_path)
     try:
@@ -952,7 +1005,18 @@ def analytics_by_year(db_path: str | None = None) -> list[dict]:
                GROUP BY year
                ORDER BY year"""
         ).fetchall()
-        return [{"label": row["year"], "count": row["count"], "budget": row["budget"]} for row in rows]
+        result = []
+        for row in rows:
+            year = row["year"]
+            tax_data = TAX_REVENUE_BY_YEAR.get(year)
+            result.append({
+                "label": year,
+                "count": row["count"],
+                "budget": row["budget"],
+                "tax_revenue": tax_data["amount"] if tax_data else None,
+                "tax_source_url": tax_data["source_url"] if tax_data else None,
+            })
+        return result
     finally:
         conn.close()
 

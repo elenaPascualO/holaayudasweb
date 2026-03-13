@@ -63,14 +63,22 @@ export async function renderAnalyticsPage(params = {}) {
             </div>
           </div>
 
-          <!-- Budget by year -->
+          <!-- Budget by year (with tax revenue comparison) -->
           <div class="bg-white rounded-xl border border-gray-100 p-6">
             <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">
-              Presupuesto total por año
+              Presupuesto de ayudas vs recaudacion fiscal
             </h2>
-            <div class="h-72">
+            <div class="h-80">
               <canvas id="chart-budget-by-year"></canvas>
             </div>
+            <p class="text-xs text-gray-400 mt-3">
+              Fuente recaudacion:
+              <a href="https://sede.agenciatributaria.gob.es/Sede/datosabiertos/catalogo/hacienda/Informes_anuales_de_Recaudacion_Tributaria.shtml"
+                 target="_blank" rel="noopener noreferrer"
+                 class="text-primary hover:underline">
+                Agencia Tributaria — Informes Anuales de Recaudacion Tributaria
+              </a>
+            </p>
           </div>
 
           <!-- Count by theme + region side by side -->
@@ -271,24 +279,63 @@ export function initAnalyticsCharts() {
     })
   }
 
-  // Budget by year — bar chart
+  // Budget by year — dual bar chart (grants budget + tax revenue)
   const budgetYearCtx = document.getElementById('chart-budget-by-year')
   if (budgetYearCtx && byYear.length > 0) {
+    const hasTaxData = byYear.some(d => d.tax_revenue)
+    const budgetLabelPlugin = {
+      id: 'budgetLabels',
+      afterDatasetsDraw(chart) {
+        const ctx = chart.ctx
+        chart.data.datasets.forEach((ds, di) => {
+          chart.getDatasetMeta(di).data.forEach((bar, i) => {
+            if (!ds.data[i]) return
+            ctx.save()
+            ctx.fillStyle = di === 0 ? '#065f46' : '#1e40af'
+            ctx.font = 'bold 10px system-ui'
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'bottom'
+            ctx.fillText(formatCurrency(ds.data[i]), bar.x, bar.y - 4)
+            ctx.restore()
+          })
+        })
+      },
+    }
+
+    const datasets = [{
+      label: 'Presupuesto ayudas',
+      data: byYear.map(d => d.budget),
+      backgroundColor: '#10b981',
+      borderRadius: 4,
+    }]
+    if (hasTaxData) {
+      datasets.push({
+        label: 'Recaudacion fiscal',
+        data: byYear.map(d => d.tax_revenue),
+        backgroundColor: '#3b82f6',
+        borderRadius: 4,
+      })
+    }
+
     new Chart(budgetYearCtx, {
       type: 'bar',
       data: {
         labels: byYear.map(d => d.label),
-        datasets: [{
-          label: 'Presupuesto',
-          data: byYear.map(d => d.budget),
-          backgroundColor: '#10b981',
-          borderRadius: 4,
-        }],
+        datasets,
       },
+      plugins: [budgetLabelPlugin],
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        layout: { padding: { top: 24 } },
+        plugins: {
+          legend: { display: hasTaxData },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.dataset.label}: ${formatCurrency(ctx.raw)}`,
+            },
+          },
+        },
         scales: {
           y: {
             beginAtZero: true,

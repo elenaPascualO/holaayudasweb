@@ -103,6 +103,44 @@ class TestAnalyticsByYear:
         years = [d["label"] for d in data]
         assert "2024" in years
 
+    @pytest.mark.asyncio
+    async def test_by_year_includes_tax_revenue(self, client):
+        """Each year entry should include tax_revenue and tax_source_url."""
+        resp = await client.get("/api/analytics/by-year")
+        assert resp.status_code == 200
+        data = resp.json()
+        entry_2024 = next(d for d in data if d["label"] == "2024")
+        assert "tax_revenue" in entry_2024
+        assert "tax_source_url" in entry_2024
+        assert entry_2024["tax_revenue"] == 294_734_000_000
+        assert "agenciatributaria" in entry_2024["tax_source_url"]
+
+    @pytest.mark.asyncio
+    async def test_by_year_tax_revenue_null_for_unknown_year(self, client, setup_db):
+        """Tax revenue should be None for years without AEAT data."""
+        from backend.services.cache import cache
+        from backend.services.convocatorias_db import upsert_convocatorias_list, update_convocatoria_detail
+        db_path = setup_db
+        upsert_convocatorias_list([{
+            "numeroConvocatoria": "F001",
+            "descripcion": "Future grant",
+            "fechaRecepcion": "2030-01-01",
+            "organo": {"nivel1": "ESTADO", "nivel2": "MIN", "nivel3": None},
+        }], db_path)
+        update_convocatoria_detail("F001", {
+            "presupuestoTotal": 100.0,
+            "descripcionFinalidad": "Test",
+            "abierto": True,
+        }, db_path)
+
+        cache._store.pop("analytics:by-year", None)
+        resp = await client.get("/api/analytics/by-year")
+        data = resp.json()
+        entry_2030 = next((d for d in data if d["label"] == "2030"), None)
+        assert entry_2030 is not None
+        assert entry_2030["tax_revenue"] is None
+        assert entry_2030["tax_source_url"] is None
+
 
 class TestAnalyticsMonthlyTrend:
     @pytest.mark.asyncio
