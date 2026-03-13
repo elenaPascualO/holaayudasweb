@@ -43,7 +43,7 @@ MAX_CONCURRENT = 3
 PAGE_SIZE = 50
 REQUEST_TIMEOUT = 30.0
 DETAIL_BATCH_SIZE = 30_000
-EMBEDDING_BATCH_SIZE = 10_000
+EMBEDDING_BATCH_SIZE = 50_000
 EMBEDDING_API_BATCH = 500  # texts per OpenAI API call
 
 # Callback type: receives a dict with progress info (phase, counts, etc.)
