@@ -190,9 +190,10 @@ function applySemanticFilters(rawResults, filters, pageSize) {
 
   let filtered = rawResults.content
 
-  // Status filter based on _status field (matches displayed badge)
+  // Status filter: "Abiertas" excludes only confirmed-closed items
+  // (keeps open, permanent, and unknown — unknown shouldn't be treated as closed)
   if (filters.abierto === 'true') {
-    filtered = filtered.filter(r => r._status === 'open' || r._status === 'permanent')
+    filtered = filtered.filter(r => r._status !== 'closed')
   } else if (filters.abierto === 'false') {
     filtered = filtered.filter(r => r._status === 'closed')
   }
