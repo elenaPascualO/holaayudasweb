@@ -194,11 +194,6 @@ def _build_scored_response(
     for candidate, score in scored_results:
         result = _row_to_search_result(candidate)
         result["_score"] = round(score, 4)
-
-        # Determine status from available data
-        if candidate.get("abierto"):
-            result["_status"] = "open"
-
         content.append(result)
 
     return {

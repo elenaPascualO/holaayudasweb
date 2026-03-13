@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 from backend.config import CONVOCATORIAS_DB_PATH
@@ -588,6 +589,56 @@ def _row_to_bdns_detail(row: sqlite3.Row) -> dict:
     return result
 
 
+def _parse_iso_date(date_str: str | None) -> datetime | None:
+    """Parse ISO date (YYYY-MM-DD) from SQLite into datetime."""
+    if not date_str:
+        return None
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None
+
+
+def _compute_status(
+    abierto: int | None,
+    start_str: str | None,
+    end_str: str | None,
+) -> str:
+    """Compute grant status from dates and abierto flag.
+
+    Mirrors getGrantStatus() in frontend/src/utils/dates.js and
+    get_grant_status() in bdns_client.py.
+    """
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Permanently open with no end date
+    if abierto == 1 and not end_str:
+        return "permanent"
+
+    end_date = _parse_iso_date(end_str)
+    start_date = _parse_iso_date(start_str)
+
+    # End date in the past → closed
+    if end_date and end_date < today:
+        return "closed"
+
+    # Start date in the future → upcoming
+    if start_date and start_date > today:
+        return "upcoming"
+
+    # End date in the future → open
+    if end_date and end_date >= today:
+        return "open"
+
+    # Fallback to abierto flag
+    if abierto == 1:
+        return "open"
+    if abierto == 0:
+        return "closed"
+
+    return "unknown"
+
+
 def _row_to_search_result(row: sqlite3.Row) -> dict:
     """Convert a SQLite row to BDNS-compatible search result format.
 
@@ -597,14 +648,15 @@ def _row_to_search_result(row: sqlite3.Row) -> dict:
     Returns:
         Dict matching the BDNS search result format used by GrantCard.
     """
-    # Determine status string from abierto flag
+    # Determine status using date-based logic (mirrors getGrantStatus in dates.js)
     abierto = row["abierto"] if "abierto" in row.keys() else None
-    if abierto == 1:
-        status = "open"
-    elif abierto == 0:
-        status = "closed"
-    else:
-        status = "unknown"
+    keys = row.keys()
+    fin_str = row["fecha_fin_solicitud"] if "fecha_fin_solicitud" in keys else None
+    inicio_str = row["fecha_inicio_solicitud"] if "fecha_inicio_solicitud" in keys else None
+    text_inicio = row["text_inicio"] if "text_inicio" in keys else None
+    text_fin = row["text_fin"] if "text_fin" in keys else None
+
+    status = _compute_status(abierto, inicio_str or text_inicio, fin_str or text_fin)
 
     return {
         "numeroConvocatoria": row["numero_convocatoria"],
@@ -819,7 +871,9 @@ def search_convocatorias_local(
         data_sql = f"""
             SELECT c.numero_convocatoria, c.descripcion, c.descripcion_leng,
                    c.fecha_recepcion, c.nivel1, c.nivel2, c.nivel3,
-                   c.presupuesto_total, c.abierto
+                   c.presupuesto_total, c.abierto,
+                   c.fecha_inicio_solicitud, c.fecha_fin_solicitud,
+                   c.text_inicio, c.text_fin
             FROM convocatorias c
             WHERE {where_clause}
             ORDER BY {order_clause}
@@ -897,7 +951,9 @@ def get_latest_convocatorias_local(
         rows = conn.execute(
             """SELECT numero_convocatoria, descripcion, descripcion_leng,
                       fecha_recepcion, nivel1, nivel2, nivel3,
-                      presupuesto_total, abierto
+                      presupuesto_total, abierto,
+                      fecha_inicio_solicitud, fecha_fin_solicitud,
+                      text_inicio, text_fin
                FROM convocatorias
                WHERE detail_fetched = 1
                ORDER BY fecha_recepcion DESC
