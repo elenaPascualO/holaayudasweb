@@ -630,12 +630,11 @@ def _compute_status(
     if end_date and end_date >= today:
         return "open"
 
-    # Fallback to abierto flag
+    # Fallback: abierto=true means "indefinitely open"
     if abierto == 1:
         return "open"
-    if abierto == 0:
-        return "closed"
 
+    # No parseable dates and not marked as indefinite → unknown
     return "unknown"
 
 
@@ -845,11 +844,19 @@ def search_convocatorias_local(
             )
             params.append(region_desc)
 
-        # Estado filter
+        # Estado filter (date-based: unknown status treated as open)
         if estado == "abiertas":
-            where_parts.append("c.abierto = 1")
+            # Include everything except definitely closed (past end date)
+            where_parts.append(
+                "NOT (c.fecha_fin_solicitud IS NOT NULL"
+                " AND c.fecha_fin_solicitud < date('now'))"
+            )
         elif estado == "cerradas":
-            where_parts.append("c.abierto = 0")
+            # Only grants with end date in the past
+            where_parts.append(
+                "c.fecha_fin_solicitud IS NOT NULL"
+                " AND c.fecha_fin_solicitud < date('now')"
+            )
 
         where_clause = " AND ".join(where_parts)
 
@@ -1296,16 +1303,19 @@ def analytics_status(db_path: str | None = None) -> dict:
     try:
         row = conn.execute(
             """SELECT
-                SUM(CASE WHEN abierto = 1 THEN 1 ELSE 0 END) as open_count,
-                SUM(CASE WHEN abierto = 0 THEN 1 ELSE 0 END) as closed_count,
+                SUM(CASE WHEN fecha_fin_solicitud IS NOT NULL
+                         AND fecha_fin_solicitud < date('now')
+                    THEN 1 ELSE 0 END) as closed_count,
                 COUNT(*) as total
                FROM convocatorias
                WHERE detail_fetched = 1"""
         ).fetchone()
+        total = row["total"] or 0
+        closed = row["closed_count"] or 0
         return {
-            "open": row["open_count"] or 0,
-            "closed": row["closed_count"] or 0,
-            "total": row["total"] or 0,
+            "open": total - closed,
+            "closed": closed,
+            "total": total,
         }
     finally:
         conn.close()
@@ -1326,7 +1336,9 @@ def analytics_summary(db_path: str | None = None) -> dict:
             """SELECT
                 COUNT(*) as total,
                 COALESCE(SUM(presupuesto_total), 0) as total_budget,
-                SUM(CASE WHEN abierto = 1 THEN 1 ELSE 0 END) as open_count,
+                SUM(CASE WHEN fecha_fin_solicitud IS NULL
+                         OR fecha_fin_solicitud >= date('now')
+                    THEN 1 ELSE 0 END) as open_count,
                 COALESCE(AVG(CASE WHEN presupuesto_total > 0 THEN presupuesto_total END), 0) as avg_budget
                FROM convocatorias"""
         ).fetchone()
