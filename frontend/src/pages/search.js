@@ -23,10 +23,16 @@ export async function renderSearchPage(params) {
   // Determine if we should use semantic search or legacy BDNS search
   const useSemanticSearch = !!q
 
+  // Map estado (abiertas/cerradas) to abierto (true/false) for the filter panel
+  let abierto = params.abierto
+  if (!abierto && params.estado) {
+    abierto = params.estado === 'abiertas' ? 'true' : params.estado === 'cerradas' ? 'false' : ''
+  }
+
   const currentFilters = {
     yearFrom: params.yearFrom,
     yearTo: params.yearTo,
-    abierto: params.abierto,
+    abierto,
   }
 
   let results

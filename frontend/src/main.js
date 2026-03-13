@@ -638,6 +638,7 @@ async function handleBeneficiaryDrillDown(e) {
 function handleSemanticFilterSubmit(e) {
   e.preventDefault()
   const formData = new FormData(e.target)
+  const currentParams = new URLSearchParams(window.location.search)
   const params = new URLSearchParams()
 
   // Preserve search query
@@ -653,6 +654,18 @@ function handleSemanticFilterSubmit(e) {
 
   const abierto = formData.get('abierto')
   if (abierto) params.set('abierto', abierto)
+
+  // Map abierto (true/false) to estado (abiertas/cerradas) for non-semantic search
+  if (abierto === 'true') params.set('estado', 'abiertas')
+  else if (abierto === 'false') params.set('estado', 'cerradas')
+  // If no abierto set, preserve existing estado from URL
+  else if (currentParams.get('estado')) params.set('estado', currentParams.get('estado'))
+
+  // Preserve analytics drill-down params from current URL
+  for (const key of ['descripcionFinalidad', 'regionDesc']) {
+    const val = currentParams.get(key)
+    if (val) params.set(key, val)
+  }
 
   navigate(`/buscar?${params.toString()}`)
 }
