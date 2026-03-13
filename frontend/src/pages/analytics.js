@@ -283,25 +283,6 @@ export function initAnalyticsCharts() {
   const budgetYearCtx = document.getElementById('chart-budget-by-year')
   if (budgetYearCtx && byYear.length > 0) {
     const hasTaxData = byYear.some(d => d.tax_revenue)
-    const budgetLabelPlugin = {
-      id: 'budgetLabels',
-      afterDatasetsDraw(chart) {
-        const ctx = chart.ctx
-        chart.data.datasets.forEach((ds, di) => {
-          chart.getDatasetMeta(di).data.forEach((bar, i) => {
-            if (!ds.data[i]) return
-            ctx.save()
-            ctx.fillStyle = di === 0 ? '#065f46' : '#1e40af'
-            ctx.font = 'bold 10px system-ui'
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'bottom'
-            ctx.fillText(formatCurrency(ds.data[i]), bar.x, bar.y - 4)
-            ctx.restore()
-          })
-        })
-      },
-    }
-
     const datasets = [{
       label: 'Presupuesto ayudas',
       data: byYear.map(d => d.budget),
@@ -323,11 +304,9 @@ export function initAnalyticsCharts() {
         labels: byYear.map(d => d.label),
         datasets,
       },
-      plugins: [budgetLabelPlugin],
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        layout: { padding: { top: 24 } },
         plugins: {
           legend: { display: hasTaxData },
           tooltip: {
