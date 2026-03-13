@@ -43,18 +43,23 @@ export async function renderSearchPage(params) {
       // No query — fall back to legacy BDNS search for browsing
       // Skip default date filter when analytics drill-down filters are present
       const hasAnalyticsFilter = params.descripcionFinalidad || params.regionDesc || params.estado
+      const hasYearFilter = params.yearFrom || params.yearTo
       const now = new Date()
-      const defaultFechaDesde = hasAnalyticsFilter
+      const defaultFechaDesde = (hasAnalyticsFilter || hasYearFilter)
         ? undefined
         : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-      const fechaDesde = params.fechaDesde ?? defaultFechaDesde
+      // Convert yearFrom/yearTo to fechaDesde/fechaHasta when present
+      const fechaDesde = params.fechaDesde
+        ?? (params.yearFrom ? `${params.yearFrom}-01-01` : defaultFechaDesde)
+      const fechaHasta = params.fechaHasta
+        ?? (params.yearTo ? `${params.yearTo}-12-31` : undefined)
 
       results = await searchGrants({
         q: '',
         page,
         pageSize,
         fechaDesde,
-        fechaHasta: params.fechaHasta,
+        fechaHasta,
         tipoAdministracion: params.tipoAdministracion,
         regiones: params.regiones,
         orden: params.orden,

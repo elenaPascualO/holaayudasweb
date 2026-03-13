@@ -5,7 +5,6 @@
 import {
   fetchAnalyticsSummary,
   fetchAnalyticsByYear,
-  fetchAnalyticsMonthlyTrend,
   fetchAnalyticsByTheme,
   fetchAnalyticsByRegion,
   fetchAnalyticsTopOrgans,
@@ -17,11 +16,6 @@ import { navigate } from '../router.js'
 // Module-level state for chart data (populated during render, used by initAnalyticsCharts)
 let _chartData = null
 
-const MONTH_NAMES = [
-  'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-  'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic',
-]
-
 /**
  * Render the analytics dashboard page.
  * @param {Object} params - Query parameters
@@ -32,11 +26,10 @@ export async function renderAnalyticsPage(params = {}) {
 
   try {
     // Fetch all data in parallel
-    const [summary, byYear, monthlyTrend, byTheme, byRegion, topOrgans, status] =
+    const [summary, byYear, byTheme, byRegion, topOrgans, status] =
       await Promise.all([
         fetchAnalyticsSummary(),
         fetchAnalyticsByYear(),
-        fetchAnalyticsMonthlyTrend(currentYear),
         fetchAnalyticsByTheme(),
         fetchAnalyticsByRegion(),
         fetchAnalyticsTopOrgans(),
@@ -44,7 +37,7 @@ export async function renderAnalyticsPage(params = {}) {
       ])
 
     // Store data for chart initialization
-    _chartData = { summary, byYear, monthlyTrend, byTheme, byRegion, topOrgans, status, currentYear }
+    _chartData = { summary, byYear, byTheme, byRegion, topOrgans, status }
 
     return `
       <div class="max-w-5xl mx-auto">
@@ -80,21 +73,11 @@ export async function renderAnalyticsPage(params = {}) {
             </div>
           </div>
 
-          <!-- Monthly trend -->
-          <div class="bg-white rounded-xl border border-gray-100 p-6">
-            <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">
-              Tendencia mensual ${currentYear}
-            </h2>
-            <div class="h-64">
-              <canvas id="chart-monthly"></canvas>
-            </div>
-          </div>
-
-          <!-- Theme + Region side by side -->
+          <!-- Count by theme + region side by side -->
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div class="bg-white rounded-xl border border-gray-100 p-6">
               <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">
-                Por tematica
+                Numero de ayudas por tematica
               </h2>
               <div class="h-80">
                 <canvas id="chart-by-theme"></canvas>
@@ -103,10 +86,31 @@ export async function renderAnalyticsPage(params = {}) {
 
             <div class="bg-white rounded-xl border border-gray-100 p-6">
               <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">
-                Por region
+                Numero de ayudas por region
               </h2>
               <div class="h-80">
                 <canvas id="chart-by-region"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Budget by theme + region side by side -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-white rounded-xl border border-gray-100 p-6">
+              <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">
+                Presupuesto total por tematica
+              </h2>
+              <div class="h-80">
+                <canvas id="chart-budget-by-theme"></canvas>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-xl border border-gray-100 p-6">
+              <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">
+                Presupuesto total por region
+              </h2>
+              <div class="h-80">
+                <canvas id="chart-budget-by-region"></canvas>
               </div>
             </div>
           </div>
@@ -231,10 +235,9 @@ function createTopOrgansTable(organs) {
 export function initAnalyticsCharts() {
   if (!_chartData || typeof Chart === 'undefined') return
 
-  const { byYear, monthlyTrend, byTheme, byRegion, status, currentYear } = _chartData
+  const { byYear, byTheme, byRegion, status } = _chartData
 
   const primaryColor = '#4f46e5'
-  const primaryLight = 'rgba(79, 70, 229, 0.1)'
 
   // By year — bar chart
   const yearCtx = document.getElementById('chart-by-year')
@@ -303,34 +306,7 @@ export function initAnalyticsCharts() {
     })
   }
 
-  // Monthly trend — line chart
-  const monthCtx = document.getElementById('chart-monthly')
-  if (monthCtx && monthlyTrend.length > 0) {
-    new Chart(monthCtx, {
-      type: 'line',
-      data: {
-        labels: monthlyTrend.map(d => MONTH_NAMES[parseInt(d.label, 10) - 1] || d.label),
-        datasets: [{
-          label: 'Convocatorias',
-          data: monthlyTrend.map(d => d.count),
-          borderColor: primaryColor,
-          backgroundColor: primaryLight,
-          fill: true,
-          tension: 0.3,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { beginAtZero: true },
-        },
-      },
-    })
-  }
-
-  // By theme — horizontal bar
+  // By theme — horizontal bar (count)
   const themeCtx = document.getElementById('chart-by-theme')
   if (themeCtx && byTheme.length > 0) {
     new Chart(themeCtx, {
@@ -391,6 +367,76 @@ export function initAnalyticsCharts() {
           if (elements.length > 0) {
             const idx = elements[0].index
             const region = byRegion[idx]
+            navigate(`/buscar?regionDesc=${encodeURIComponent(region.label)}`)
+          }
+        },
+      },
+    })
+  }
+
+  // Budget by theme — horizontal bar
+  const budgetThemeCtx = document.getElementById('chart-budget-by-theme')
+  if (budgetThemeCtx && byTheme.length > 0) {
+    new Chart(budgetThemeCtx, {
+      type: 'bar',
+      data: {
+        labels: byTheme.map(d => truncateLabel(d.label, 30)),
+        datasets: [{
+          label: 'Presupuesto',
+          data: byTheme.map(d => d.budget),
+          backgroundColor: primaryColor,
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } },
+          y: { ticks: { font: { size: 11 } } },
+        },
+        onClick: (_, elements) => {
+          if (elements.length > 0) {
+            const idx = elements[0].index
+            const theme = byTheme[idx]
+            navigate(`/buscar?descripcionFinalidad=${encodeURIComponent(theme.label)}`)
+          }
+        },
+      },
+    })
+  }
+
+  // Budget by region — horizontal bar
+  const budgetRegionCtx = document.getElementById('chart-budget-by-region')
+  if (budgetRegionCtx && byRegion.length > 0) {
+    // Sort by budget descending for this chart
+    const regionsByBudget = [...byRegion].sort((a, b) => b.budget - a.budget)
+    new Chart(budgetRegionCtx, {
+      type: 'bar',
+      data: {
+        labels: regionsByBudget.map(d => truncateLabel(d.label, 25)),
+        datasets: [{
+          label: 'Presupuesto',
+          data: regionsByBudget.map(d => d.budget),
+          backgroundColor: '#10b981',
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } },
+          y: { ticks: { font: { size: 11 } } },
+        },
+        onClick: (_, elements) => {
+          if (elements.length > 0) {
+            const idx = elements[0].index
+            const region = regionsByBudget[idx]
             navigate(`/buscar?regionDesc=${encodeURIComponent(region.label)}`)
           }
         },
