@@ -36,6 +36,32 @@ def _cosine_similarity_batch(
     return candidate_norms @ query_norm
 
 
+def _passes_filters(candidate: dict, filters: dict) -> bool:
+    """Check if a single candidate passes all filters.
+
+    Args:
+        candidate: Convocatoria dict.
+        filters: Dict with keys: abierto, yearFrom, yearTo.
+
+    Returns:
+        True if candidate passes all filters.
+    """
+    if filters.get("abierto") is not None:
+        abierto_val = 1 if filters["abierto"] else 0
+        if candidate.get("abierto") != abierto_val:
+            return False
+
+    if filters.get("yearFrom"):
+        if candidate.get("fecha_recepcion", "") < f"{filters['yearFrom']}-01-01":
+            return False
+
+    if filters.get("yearTo"):
+        if candidate.get("fecha_recepcion", "") > f"{filters['yearTo']}-12-31":
+            return False
+
+    return True
+
+
 def _apply_filters(candidates: list[dict], filters: dict | None) -> list[dict]:
     """Apply optional filters to candidate results.
 
@@ -48,27 +74,7 @@ def _apply_filters(candidates: list[dict], filters: dict | None) -> list[dict]:
     """
     if not filters:
         return candidates
-
-    filtered = candidates
-    if filters.get("abierto") is not None:
-        abierto_val = 1 if filters["abierto"] else 0
-        filtered = [c for c in filtered if c.get("abierto") == abierto_val]
-
-    if filters.get("yearFrom"):
-        year_from = str(filters["yearFrom"])
-        filtered = [
-            c for c in filtered
-            if c.get("fecha_recepcion", "") >= f"{year_from}-01-01"
-        ]
-
-    if filters.get("yearTo"):
-        year_to = str(filters["yearTo"])
-        filtered = [
-            c for c in filtered
-            if c.get("fecha_recepcion", "") <= f"{year_to}-12-31"
-        ]
-
-    return filtered
+    return [c for c in candidates if _passes_filters(c, filters)]
 
 
 async def semantic_search(
@@ -82,7 +88,8 @@ async def semantic_search(
     1. FTS5 pre-filters candidates by text match
     2. OpenAI embeds the query
     3. Cosine similarity re-ranks candidates
-    4. Returns top_k results in BDNS-compatible format
+    4. Filters (status, year) applied AFTER ranking to preserve relevance
+    5. Returns top_k results in BDNS-compatible format
 
     Args:
         query: User search text in natural language.
@@ -102,11 +109,8 @@ async def semantic_search(
             "size": top_k,
         }
 
-    # Step 1: FTS5 pre-filter
+    # Step 1: FTS5 pre-filter (no status/year filters — applied after ranking)
     candidates = search_fts(query, limit=fts_candidates)
-
-    # Apply filters
-    candidates = _apply_filters(candidates, filters)
 
     # Step 2: If too few FTS results, fall back to recent embeddings
     if len(candidates) < top_k:
@@ -115,7 +119,6 @@ async def semantic_search(
             len(candidates), top_k,
         )
         recent = get_recent_with_embeddings(limit=5000)
-        recent = _apply_filters(recent, filters)
 
         # Merge: FTS candidates first, then recent (dedup by id)
         seen_ids = {c["id"] for c in candidates}
@@ -128,9 +131,9 @@ async def semantic_search(
     candidates_with_emb = [c for c in candidates if c.get("embedding")]
 
     if not candidates_with_emb:
-        # No embeddings available — return FTS results as-is (sorted by date)
+        # No embeddings available — return FTS results as-is, filtered by date
         logger.info("No embeddings available, returning FTS results by date")
-        results = candidates[:top_k]
+        results = _apply_filters(candidates, filters)[:top_k]
         return _build_response(results, top_k)
 
     # Step 3: Embed the query
@@ -139,8 +142,8 @@ async def semantic_search(
         query_vec = np.array(query_embeddings[0], dtype=np.float32)
     except Exception as e:
         logger.error("Failed to embed query: %s", e)
-        # Fallback: return FTS results by date
-        results = candidates[:top_k]
+        # Fallback: return FTS results by date, filtered
+        results = _apply_filters(candidates, filters)[:top_k]
         return _build_response(results, top_k)
 
     # Step 4: Compute cosine similarity
@@ -150,9 +153,13 @@ async def semantic_search(
     )
     scores = _cosine_similarity_batch(query_vec, candidate_vecs)
 
-    # Step 5: Sort by score and take top_k
+    # Step 5: Sort by score
     scored = list(zip(candidates_with_emb, scores.tolist()))
     scored.sort(key=lambda x: x[1], reverse=True)
+
+    # Step 6: Apply filters AFTER ranking to preserve semantic relevance
+    if filters:
+        scored = [(c, s) for c, s in scored if _passes_filters(c, filters)]
     top_results = scored[:top_k]
 
     return _build_scored_response(top_results, top_k)
