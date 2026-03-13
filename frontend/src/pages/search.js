@@ -38,13 +38,15 @@ export async function renderSearchPage(params) {
   let results
   try {
     if (useSemanticSearch) {
-      results = await semanticSearch({
-        q,
-        topK: pageSize,
+      // Fetch larger pool WITHOUT filters — filters applied client-side
+      // to preserve semantic relevance ordering
+      const poolSize = pageSize * 3
+      const rawResults = await semanticSearch({ q, topK: poolSize })
+      results = applySemanticFilters(rawResults, {
+        abierto,
         yearFrom: params.yearFrom,
         yearTo: params.yearTo,
-        abierto: params.abierto === 'true' ? true : params.abierto === 'false' ? false : undefined,
-      })
+      }, pageSize)
     } else {
       // No query — fall back to legacy BDNS search for browsing
       // Skip default date filter when analytics drill-down filters are present
@@ -173,4 +175,42 @@ export async function renderSearchPage(params) {
       </div>
     </div>
   `
+}
+
+/**
+ * Apply year/status filters client-side to semantic search results.
+ * Filters use _status (date-based, what user sees) not raw abierto flag.
+ * @param {Object} rawResults - API response from semantic search
+ * @param {Object} filters - { abierto, yearFrom, yearTo }
+ * @param {number} pageSize - Max results to return
+ * @returns {Object} Filtered results in same format
+ */
+function applySemanticFilters(rawResults, filters, pageSize) {
+  if (!rawResults.content) return rawResults
+
+  let filtered = rawResults.content
+
+  // Status filter based on _status field (matches displayed badge)
+  if (filters.abierto === 'true') {
+    filtered = filtered.filter(r => r._status === 'open' || r._status === 'permanent')
+  } else if (filters.abierto === 'false') {
+    filtered = filtered.filter(r => r._status === 'closed')
+  }
+
+  // Year range filters
+  if (filters.yearFrom) {
+    filtered = filtered.filter(r => (r.fechaRecepcion || '') >= `${filters.yearFrom}-01-01`)
+  }
+  if (filters.yearTo) {
+    filtered = filtered.filter(r => (r.fechaRecepcion || '') <= `${filters.yearTo}-12-31`)
+  }
+
+  const sliced = filtered.slice(0, pageSize)
+
+  return {
+    ...rawResults,
+    content: sliced,
+    totalElements: filtered.length,
+    totalPages: Math.ceil(filtered.length / pageSize) || 1,
+  }
 }
