@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api", tags=["search"])
 @router.get("/search")
 async def search(
     q: str = Query(default="", description="Natural language search query"),
-    topK: int = Query(default=20, ge=1, le=50, description="Number of results"),
+    topK: int = Query(default=20, ge=1, le=200, description="Number of results"),
     region: str | None = Query(default=None, description="Region name filter"),
     yearFrom: int | None = Query(default=None, description="Start year"),
     yearTo: int | None = Query(default=None, description="End year"),
