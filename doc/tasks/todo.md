@@ -1,5 +1,74 @@
 # Tareas pendientes
 
+## Optimizaciones SQLite y Queries
+
+Diagnostico: la homepage (`/api/convocatorias/ultimas`) tarda 1-11s en Railway porque los volumenes persistentes usan almacenamiento en red (latencia alta en I/O). Las queries hacen COUNT(*) sobre 616K filas en cada request sin cache. Implementar antes o despues de migrar a Hetzner+Coolify.
+
+### 1. Cache de `has_convocatorias_data()` en memoria
+**Archivo:** `backend/services/convocatorias_db.py`
+- [ ] Anadir variable de modulo `_has_data_cache: bool | None = None`
+- [ ] Cambiar `has_convocatorias_data()` para usar el cache; si `_has_data_cache is not None` devolver directamente
+- [ ] Cambiar la query interna de `SELECT COUNT(*)` a `SELECT 1 FROM convocatorias WHERE detail_fetched = 1 LIMIT 1` (O(1) en vez de O(N))
+- [ ] Anadir funcion `invalidate_has_data_cache()` que pone `_has_data_cache = None`
+
+### 2. Indice compuesto para query de homepage
+**Archivo:** `backend/services/convocatorias_db.py` (en `init_convocatorias_db`)
+- [ ] Anadir indice: `CREATE INDEX IF NOT EXISTS idx_conv_detail_fecha ON convocatorias(detail_fetched, fecha_recepcion DESC)`
+- [ ] Permite que `WHERE detail_fetched = 1 ORDER BY fecha_recepcion DESC LIMIT 20` use un solo index scan sin sort
+- [ ] Mantener los indices individuales existentes (usados por otras queries)
+
+### 3. PRAGMAs de rendimiento SQLite
+**Archivos:** `backend/services/convocatorias_db.py` y `backend/services/beneficiarios_db.py` (en `_get_connection`)
+- [ ] Anadir `PRAGMA cache_size=-65536` — 64MB page cache (default 2MB)
+- [ ] Anadir `PRAGMA mmap_size=268435456` — 256MB memory-mapped I/O
+- [ ] Anadir `PRAGMA temp_store=MEMORY` — tablas temporales en RAM
+- [ ] Son seguros con WAL mode, per-connection, no afectan sync concurrente
+
+### 4. Eliminar COUNT(*) redundante en `get_latest_convocatorias_local()`
+**Archivo:** `backend/services/convocatorias_db.py`
+- [ ] Eliminar la query `SELECT COUNT(*) FROM convocatorias WHERE detail_fetched = 1` separada
+- [ ] Usar `COUNT(*) OVER()` como window function dentro de la query de datos (una sola query en vez de dos)
+- [ ] Requiere SQLite 3.25+ (Python 3.13 trae SQLite 3.45+, no hay problema)
+
+### 5. Cache de respuesta para `/api/convocatorias/ultimas` + pre-warm post-sync
+**Archivos:** `backend/routes/convocatorias.py`, `backend/services/cache.py`, `backend/routes/admin.py`
+- [ ] **cache.py**: Anadir metodo `clear_prefix(prefix: str) -> int` al TTLCache para invalidar grupos de keys
+- [ ] **convocatorias.py**: En `latest_grants()`, buscar en cache con key `latest:{page}:{pageSize}` antes de tocar SQLite. Cachear resultado con TTL 24h (se invalida explicitamente tras sync)
+- [ ] **admin.py**: Tras sync exitoso en `_run_sync_background()`:
+  - Llamar `cache.clear_prefix("latest:")` para invalidar todas las paginas cacheadas
+  - Llamar `cache.clear_prefix("analytics:")` para refrescar tambien analytics
+  - Llamar `invalidate_has_data_cache()` del cambio 1
+  - Pre-calcular y cachear la homepage: `get_latest_convocatorias_local_async(page=0, page_size=20)` con cache key `latest:0:20`
+
+### 6. Consolidar `get_sync_status()` de 3 queries a 1
+**Archivo:** `backend/services/convocatorias_db.py`
+- [ ] Reemplazar las 3 queries `SELECT COUNT(*)` separadas por una sola con `SUM(CASE WHEN ...)`
+- [ ] Patron ya usado en `get_backfill_stats()` del mismo archivo
+
+### 7. Pre-warm SQLite al arrancar
+**Archivo:** `backend/main.py`
+- [ ] En el lifespan, tras `init_db()` e `init_convocatorias_db()`:
+  - Comprobar `has_convocatorias_data()` (esto inicializa el cache del cambio 1)
+  - Si hay datos, ejecutar `get_latest_convocatorias_local_async(page=0, page_size=20)` y cachear resultado
+- [ ] Asi el primer visitante real recibe respuesta cacheada, sin cold-start
+
+### Orden de implementacion
+```
+Cambios 1, 2, 3, 6 → independientes, hacer primero
+Cambio 4 → depende del indice del cambio 2 para maximo rendimiento
+Cambio 5 → depende de cambio 1 (invalidate_has_data_cache)
+Cambio 7 → depende de cambios 1 y 5 (cache keys y flag)
+```
+
+### Verificacion
+1. `uv run pytest -v` — todos los tests existentes pasan
+2. Levantar backend local y verificar que `/api/convocatorias/ultimas` responde
+3. Segunda llamada a `/ultimas` debe ser instantanea (cache hit)
+4. Anadir test para `clear_prefix()` en `test_cache.py`
+5. Anadir test para `invalidate_has_data_cache()` en `test_convocatorias_db.py`
+
+---
+
 ## Despliegue Fase 3: Replica + Semantica + Analytics
 
 Pasos para activar la Fase 3 en produccion (Railway):
