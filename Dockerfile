@@ -12,25 +12,29 @@ RUN bun run build
 # Stage 2: Python backend
 FROM python:3.13-slim
 
+# System deps (curl for Coolify health checks)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
-# Copy backend code and pyproject.toml
-COPY backend/ backend/
-COPY pyproject.toml .
+# Install Python dependencies (cached layer — only rebuilds when lock changes)
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
-# Install Python dependencies
-RUN uv pip install --system --no-cache .
+# Copy backend code
+COPY backend/ backend/
 
 # Copy built frontend from first stage
 COPY --from=frontend-builder /app/frontend/dist frontend/dist
 
-# Create data directory for SQLite databases
+# Create data directory for SQLite databases (mounted as persistent volume)
 RUN mkdir -p /app/data
 
 EXPOSE 8000
 
-# Use shell form to expand $PORT environment variable (Railway sets this)
-CMD uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} --log-level info
+CMD ["uv", "run", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]

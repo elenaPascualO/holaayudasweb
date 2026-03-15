@@ -1,0 +1,15 @@
+__pycache__
+*.pyc
+.venv
+.git
+.github
+.ruff_cache
+.pytest_cache
+data
+doc
+*.md
+!pyproject.toml
+railway.json
+banner.html
+holadatos-banner-*
+mockup-*
