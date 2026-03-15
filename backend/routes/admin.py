@@ -3,10 +3,12 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Header, Query
+from fastapi.responses import FileResponse
 
-from backend.config import ADMIN_SECRET
+from backend.config import ADMIN_SECRET, CONVOCATORIAS_DB_PATH, BENEFICIARIOS_DB_PATH
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -246,3 +248,32 @@ async def get_convocatorias_backfill_stats(
     from backend.services.convocatorias_db import get_backfill_stats
 
     return await asyncio.to_thread(get_backfill_stats)
+
+
+@router.get("/download/{db_name}")
+async def download_database(
+    db_name: str,
+    authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
+) -> FileResponse:
+    """Download a SQLite database file. Protected by admin token.
+
+    Temporary endpoint for migration — remove after Coolify deployment.
+    """
+    _validate_token(authorization)
+
+    db_paths = {
+        "convocatorias": CONVOCATORIAS_DB_PATH,
+        "beneficiarios": BENEFICIARIOS_DB_PATH,
+    }
+    if db_name not in db_paths:
+        raise HTTPException(status_code=404, detail=f"Unknown database: {db_name}")
+
+    db_path = Path(db_paths[db_name])
+    if not db_path.exists():
+        raise HTTPException(status_code=404, detail=f"Database file not found: {db_name}")
+
+    return FileResponse(
+        path=db_path,
+        filename=f"{db_name}.db",
+        media_type="application/octet-stream",
+    )

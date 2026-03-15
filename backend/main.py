@@ -74,7 +74,7 @@ app.include_router(admin_router)
 
 @app.get("/api/health")
 async def health_check() -> dict[str, str]:
-    """Health check for Railway."""
+    """Health check endpoint."""
     return {"status": "ok", "service": "holaayudas-api"}
 
 
