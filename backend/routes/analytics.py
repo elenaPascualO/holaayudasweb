@@ -12,10 +12,12 @@ from backend.services.convocatorias_db import (
     analytics_summary,
     analytics_top_organs,
 )
+from backend.services.semantic_search import keyword_trend
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 CACHE_TTL = 3600  # 1 hour
+KEYWORD_TREND_TTL = 600  # 10 minutes
 
 
 @router.get("/summary")
@@ -113,4 +115,19 @@ async def status() -> dict:
         return cached
     data = analytics_status()
     cache.set(key, data, CACHE_TTL)
+    return data
+
+
+@router.get("/keyword-trend")
+async def keyword_trend_endpoint(
+    q: str = Query(description="Keyword to analyze"),
+) -> dict:
+    """Get year-by-year trend for a keyword using semantic search."""
+    normalized = q.strip().lower()
+    key = f"analytics:keyword-trend:{normalized}"
+    cached_data = cache.get(key)
+    if cached_data is not None:
+        return cached_data
+    data = await keyword_trend(q)
+    cache.set(key, data, KEYWORD_TREND_TTL)
     return data

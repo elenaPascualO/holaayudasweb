@@ -1352,6 +1352,56 @@ def analytics_summary(db_path: str | None = None) -> dict:
         conn.close()
 
 
+def aggregate_by_year_for_ids(
+    ids: list[int], db_path: str | None = None
+) -> list[dict]:
+    """Aggregate convocatorias by year for a given set of IDs.
+
+    Uses a temp table to avoid SQLite's 999-variable binding limit.
+
+    Args:
+        ids: List of convocatoria primary-key IDs.
+        db_path: Override path (useful for tests).
+
+    Returns:
+        List of {year, count, budget} dicts sorted by year.
+    """
+    if not ids:
+        return []
+
+    conn = _get_connection(db_path)
+    try:
+        conn.execute("CREATE TEMP TABLE _trend_ids (id INTEGER PRIMARY KEY)")
+
+        # Insert in batches of 500 to stay under binding limits
+        batch_size = 500
+        for i in range(0, len(ids), batch_size):
+            batch = ids[i : i + batch_size]
+            placeholders = ", ".join("(?)" for _ in batch)
+            conn.execute(
+                f"INSERT OR IGNORE INTO _trend_ids VALUES {placeholders}", batch
+            )
+
+        rows = conn.execute(
+            """SELECT substr(fecha_recepcion, 1, 4) AS year,
+                      COUNT(*) AS count,
+                      COALESCE(SUM(presupuesto_total), 0) AS budget
+               FROM convocatorias
+               WHERE id IN (SELECT id FROM _trend_ids)
+                 AND fecha_recepcion IS NOT NULL
+               GROUP BY year
+               ORDER BY year"""
+        ).fetchall()
+
+        return [
+            {"year": row["year"], "count": row["count"], "budget": row["budget"]}
+            for row in rows
+        ]
+    finally:
+        conn.execute("DROP TABLE IF EXISTS _trend_ids")
+        conn.close()
+
+
 def get_embedding_text(row: dict | sqlite3.Row) -> str:
     """Build the text used for generating an embedding from a convocatoria.
 

@@ -6,6 +6,7 @@ import numpy as np
 
 from backend.services.convocatorias_db import (
     _row_to_search_result,
+    aggregate_by_year_for_ids,
     get_recent_with_embeddings,
     search_fts,
 )
@@ -209,4 +210,78 @@ def _build_scored_response(
         "totalPages": 1,
         "number": 0,
         "size": top_k,
+    }
+
+
+async def keyword_trend(
+    query: str,
+    similarity_threshold: float = 0.3,
+    fts_limit: int = 5000,
+) -> dict:
+    """Aggregate matching convocatorias by year for trend analysis.
+
+    Hybrid pipeline (FTS5 + embeddings) similar to semantic_search(),
+    but collects ALL matching IDs and aggregates by year instead of
+    returning paginated results.
+
+    Args:
+        query: User search text.
+        similarity_threshold: Min cosine similarity for embedding matches.
+        fts_limit: Max candidates from FTS5 pre-filter.
+
+    Returns:
+        Dict with query, total_matches, by_year: [{year, count, budget}].
+    """
+    if not query or not query.strip():
+        return {"query": query, "total_matches": 0, "by_year": []}
+
+    # Step 1: FTS5 pre-filter with high limit
+    fts_candidates = search_fts(query, limit=fts_limit)
+    fts_ids = {c["id"] for c in fts_candidates}
+
+    # Step 2: Supplement with recent embeddings if few FTS hits
+    all_candidates = list(fts_candidates)
+    if len(fts_candidates) < fts_limit:
+        recent = get_recent_with_embeddings(limit=fts_limit)
+        seen_ids = set(fts_ids)
+        for r in recent:
+            if r["id"] not in seen_ids:
+                all_candidates.append(r)
+                seen_ids.add(r["id"])
+
+    # Step 3: Embed query and compute cosine similarity
+    embedding_ids: set[int] = set()
+    candidates_with_emb = [c for c in all_candidates if c.get("embedding")]
+
+    if candidates_with_emb:
+        try:
+            query_embeddings = await generate_embeddings_batch([query])
+            query_vec = np.array(query_embeddings[0], dtype=np.float32)
+
+            candidate_vecs = np.array(
+                [blob_to_embedding(c["embedding"]) for c in candidates_with_emb],
+                dtype=np.float32,
+            )
+            scores = _cosine_similarity_batch(query_vec, candidate_vecs)
+
+            for candidate, score in zip(candidates_with_emb, scores.tolist()):
+                if score >= similarity_threshold:
+                    embedding_ids.add(candidate["id"])
+        except Exception as e:
+            logger.error("Keyword trend embedding failed: %s", e)
+            # Fall through — use FTS IDs only
+
+    # Step 4: Union of FTS matches + embedding matches
+    matched_ids = list(fts_ids | embedding_ids)
+
+    if not matched_ids:
+        return {"query": query, "total_matches": 0, "by_year": []}
+
+    # Step 5: Aggregate by year
+    by_year = aggregate_by_year_for_ids(matched_ids)
+
+    return {
+        "query": query,
+        "total_matches": len(matched_ids),
+        "by_year": by_year,
     }

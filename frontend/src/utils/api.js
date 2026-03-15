@@ -226,6 +226,15 @@ export async function fetchAnalyticsStatus() {
 }
 
 /**
+ * Get year-by-year keyword trend via semantic search.
+ * @param {string} q - Keyword to analyze
+ * @returns {Promise<Object>} { query, total_matches, by_year: [{year, count, budget}] }
+ */
+export async function fetchKeywordTrend(q) {
+  return fetchJson(`${BASE}/analytics/keyword-trend${buildQuery({ q })}`)
+}
+
+/**
  * Submit user feedback.
  * @param {Object} data - { email?: string, message: string }
  * @returns {Promise<Object>} Response

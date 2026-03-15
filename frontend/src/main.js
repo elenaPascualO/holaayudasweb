@@ -14,7 +14,7 @@ import { renderDetailPage } from './pages/detail.js'
 import { renderTransparenciaPage } from './pages/transparencia.js'
 import { renderConcesionesPage } from './pages/concesiones.js'
 import { renderContactoPage } from './pages/contacto.js'
-import { renderAnalyticsPage, initAnalyticsCharts } from './pages/analytics.js'
+import { renderAnalyticsPage, initAnalyticsCharts, initKeywordTrend } from './pages/analytics.js'
 import { getGrantDetailCached, getConcesionesCount, searchConcesiones, submitFeedback } from './utils/api.js'
 import { getGrantStatus } from './utils/dates.js'
 import { createStatusBadge } from './components/StatusBadge.js'
@@ -775,6 +775,7 @@ registerRoute('/datos', async (params) => {
   const html = await renderAnalyticsPage(params)
   render(html)
   initAnalyticsCharts()
+  initKeywordTrend()
 })
 
 registerRoute('/contacto', () => {
