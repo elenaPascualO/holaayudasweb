@@ -38,15 +38,14 @@ export async function renderSearchPage(params) {
   let results
   try {
     if (useSemanticSearch) {
-      // Fetch larger pool WITHOUT filters — filters applied client-side
+      // Fetch full pool WITHOUT filters — filters and pagination applied client-side
       // to preserve semantic relevance ordering
-      const poolSize = pageSize * 3
-      const rawResults = await semanticSearch({ q, topK: poolSize })
+      const rawResults = await semanticSearch({ q, topK: 200 })
       results = applySemanticFilters(rawResults, {
         abierto,
         yearFrom: params.yearFrom,
         yearTo: params.yearTo,
-      }, pageSize)
+      }, page, pageSize)
     } else {
       // No query — fall back to legacy BDNS search for browsing
       // Skip default date filter when analytics drill-down filters are present
@@ -178,14 +177,15 @@ export async function renderSearchPage(params) {
 }
 
 /**
- * Apply year/status filters client-side to semantic search results.
+ * Apply year/status filters and pagination client-side to semantic search results.
  * Filters use _status (date-based, what user sees) not raw abierto flag.
  * @param {Object} rawResults - API response from semantic search
  * @param {Object} filters - { abierto, yearFrom, yearTo }
- * @param {number} pageSize - Max results to return
- * @returns {Object} Filtered results in same format
+ * @param {number} page - Current page (0-indexed)
+ * @param {number} pageSize - Results per page
+ * @returns {Object} Filtered and paginated results in same format
  */
-function applySemanticFilters(rawResults, filters, pageSize) {
+function applySemanticFilters(rawResults, filters, page, pageSize) {
   if (!rawResults.content) return rawResults
 
   let filtered = rawResults.content
@@ -206,12 +206,16 @@ function applySemanticFilters(rawResults, filters, pageSize) {
     filtered = filtered.filter(r => (r.fechaRecepcion || '') <= `${filters.yearTo}-12-31`)
   }
 
-  const sliced = filtered.slice(0, pageSize)
+  const totalPages = Math.ceil(filtered.length / pageSize) || 1
+  const safePage = Math.min(page, totalPages - 1)
+  const start = safePage * pageSize
+  const sliced = filtered.slice(start, start + pageSize)
 
   return {
     ...rawResults,
     content: sliced,
     totalElements: filtered.length,
-    totalPages: Math.ceil(filtered.length / pageSize) || 1,
+    totalPages,
+    number: safePage,
   }
 }
