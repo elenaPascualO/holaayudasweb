@@ -69,9 +69,9 @@ async def test_latest_grants(mock_latest, mock_has_data, client):
     assert len(data["content"]) == 1
     mock_latest.assert_called_once()
 
-
+@patch("backend.routes.convocatorias.get_convocatoria_detail_local", return_value=None)
 @patch("backend.routes.convocatorias.get_convocatoria_detail", new_callable=AsyncMock)
-async def test_grant_detail(mock_detail, client):
+async def test_grant_detail(mock_detail, mock_local, client):
     """Detail endpoint returns grant detail."""
     mock_detail.return_value = {
         "codigoBDNS": "886707",
