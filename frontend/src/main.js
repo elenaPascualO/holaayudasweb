@@ -21,6 +21,7 @@ import { createStatusBadge } from './components/StatusBadge.js'
 import { formatCurrency } from './utils/formatters.js'
 import { createConcessionList } from './components/ConcessionCard.js'
 import { track, events } from './utils/tracking.js'
+import { updateMetaTags, buildBreadcrumbSchema, buildGrantSchema } from './utils/seo.js'
 
 const app = document.querySelector('#app')
 
@@ -739,6 +740,7 @@ registerRoute('/', async (params) => {
   renderLoading()
   const html = await renderHomePage(params)
   render(html)
+  updateMetaTags({ path: '/' })
   enrichVisibleCards()
 })
 
@@ -746,6 +748,14 @@ registerRoute('/buscar', async (params) => {
   renderLoading()
   const html = await renderSearchPage(params)
   render(html)
+  const q = new URLSearchParams(window.location.search).get('q')
+  updateMetaTags({
+    title: q ? `Resultados: ${q}` : 'Buscar ayudas y subvenciones',
+    description: q
+      ? `Resultados de busqueda para "${q}" en ayudas y subvenciones publicas de España.`
+      : 'Busca ayudas y subvenciones publicas en España. Filtra por tipo, region, fecha y mas.',
+    path: '/buscar',
+  })
   enrichVisibleCards()
 })
 
@@ -753,6 +763,11 @@ registerRoute('/transparencia', async (params) => {
   renderLoading()
   const html = await renderTransparenciaPage(params)
   render(html)
+  updateMetaTags({
+    title: 'Transparencia - Mayores beneficiarios de subvenciones',
+    description: 'Ranking de los mayores beneficiarios de subvenciones publicas en España. Consulta quien recibe mas fondos publicos.',
+    path: '/transparencia',
+  })
   track(events.TRANSPARENCIA_VIEW, { anio: params.anio || '' })
 })
 
@@ -760,6 +775,11 @@ registerRoute('/concesiones', async (params) => {
   renderLoading()
   const html = await renderConcesionesPage(params)
   render(html)
+  updateMetaTags({
+    title: 'Concesiones de subvenciones',
+    description: 'Listado de concesiones de subvenciones publicas otorgadas en España.',
+    path: '/concesiones',
+  })
   track(events.CONCESIONES_VIEW, { nifCif: params.nifCif || '' })
 })
 
@@ -767,6 +787,34 @@ registerRoute('/ayuda/:bdnsCode', async (params) => {
   renderLoading()
   const html = await renderDetailPage(params.bdnsCode)
   render(html)
+
+  // Set SEO meta tags from cached grant data (already fetched by renderDetailPage)
+  try {
+    const grant = await getGrantDetailCached(params.bdnsCode)
+    const orgName = [grant.organo?.nivel3, grant.organo?.nivel2, grant.organo?.nivel1]
+      .filter(Boolean).join(' - ')
+    const descText = (grant.descripcion || '').slice(0, 160)
+
+    updateMetaTags({
+      title: grant.descripcion || `Ayuda ${params.bdnsCode}`,
+      description: `${descText}${orgName ? ` — ${orgName}` : ''}`,
+      path: `/ayuda/${params.bdnsCode}`,
+      jsonLd: [
+        buildGrantSchema(grant),
+        buildBreadcrumbSchema([
+          { name: 'Inicio', url: 'https://www.holaayudas.com/' },
+          { name: 'Buscar', url: 'https://www.holaayudas.com/buscar' },
+          { name: grant.descripcion || `Ayuda ${params.bdnsCode}`, url: `https://www.holaayudas.com/ayuda/${params.bdnsCode}` },
+        ]),
+      ],
+    })
+  } catch {
+    updateMetaTags({
+      title: `Ayuda ${params.bdnsCode}`,
+      path: `/ayuda/${params.bdnsCode}`,
+    })
+  }
+
   track(events.DETAIL_VIEW, { bdns: params.bdnsCode })
 })
 
@@ -774,6 +822,11 @@ registerRoute('/datos', async (params) => {
   renderLoading()
   const html = await renderAnalyticsPage(params)
   render(html)
+  updateMetaTags({
+    title: 'Datos y estadisticas de subvenciones publicas',
+    description: 'Dashboard con datos y estadisticas de subvenciones publicas en España. Tendencias, presupuestos, regiones y tematicas.',
+    path: '/datos',
+  })
   initAnalyticsCharts()
   initKeywordTrend()
 })
@@ -781,6 +834,11 @@ registerRoute('/datos', async (params) => {
 registerRoute('/contacto', () => {
   const html = renderContactoPage()
   render(html)
+  updateMetaTags({
+    title: 'Contacto',
+    description: 'Contacta con el equipo de Hola Ayudas. Sugerencias, errores o colaboraciones.',
+    path: '/contacto',
+  })
 })
 
 // --- Start ---

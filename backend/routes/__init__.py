@@ -6,3 +6,4 @@ from .catalogs import router as catalogs_router
 from .concesiones import router as concesiones_router
 from .feedback import router as feedback_router
 from .semantic import router as semantic_router
+from .seo import router as seo_router

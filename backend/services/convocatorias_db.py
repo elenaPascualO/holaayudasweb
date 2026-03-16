@@ -1402,6 +1402,62 @@ def aggregate_by_year_for_ids(
         conn.close()
 
 
+def get_sitemap_total_count(db_path: str | None = None) -> int:
+    """Count open convocatorias for sitemap generation.
+
+    Open = fecha_fin_solicitud IS NULL OR fecha_fin_solicitud >= date('now').
+
+    Args:
+        db_path: Override path (useful for tests).
+
+    Returns:
+        Total count of open convocatorias.
+    """
+    conn = _get_connection(db_path)
+    try:
+        row = conn.execute(
+            """SELECT COUNT(*) FROM convocatorias
+               WHERE detail_fetched = 1
+               AND (fecha_fin_solicitud IS NULL OR fecha_fin_solicitud >= date('now'))"""
+        ).fetchone()
+        return row[0]
+    finally:
+        conn.close()
+
+
+def get_sitemap_entries_page(
+    page: int, page_size: int = 50000, db_path: str | None = None
+) -> list[dict]:
+    """Get a page of open convocatorias for sitemap generation.
+
+    Args:
+        page: Page number (0-indexed).
+        page_size: Entries per sitemap file (max 50000 per sitemaps.org spec).
+        db_path: Override path (useful for tests).
+
+    Returns:
+        List of dicts with numero_convocatoria and fecha_recepcion.
+    """
+    conn = _get_connection(db_path)
+    try:
+        offset = page * page_size
+        rows = conn.execute(
+            """SELECT numero_convocatoria, fecha_recepcion
+               FROM convocatorias
+               WHERE detail_fetched = 1
+               AND (fecha_fin_solicitud IS NULL OR fecha_fin_solicitud >= date('now'))
+               ORDER BY fecha_recepcion DESC
+               LIMIT ? OFFSET ?""",
+            (page_size, offset),
+        ).fetchall()
+        return [
+            {"numero": row["numero_convocatoria"], "fecha": row["fecha_recepcion"]}
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
 def get_embedding_text(row: dict | sqlite3.Row) -> str:
     """Build the text used for generating an embedding from a convocatoria.
 
