@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 try:
     # Production: running from root with 'backend.main:app'
-    from backend.config import CORS_ORIGINS
+    from backend.config import CORS_ORIGINS, IS_PRODUCTION
     from backend.routes import admin_router, analytics_router, beneficiarios_router, catalogs_router, concesiones_router, convocatorias_router, feedback_router, semantic_router, seo_router
     from backend.routes.admin import cancel_sync_task
     from backend.services.bdns_client import close_client
@@ -26,7 +26,7 @@ try:
     from backend.services.seo import get_index_html_with_meta, load_index_template
 except ImportError:
     # Development: running from backend/ with 'main:app'
-    from config import CORS_ORIGINS
+    from config import CORS_ORIGINS, IS_PRODUCTION
     from routes import admin_router, analytics_router, beneficiarios_router, catalogs_router, concesiones_router, convocatorias_router, feedback_router, semantic_router, seo_router
     from routes.admin import cancel_sync_task
     from services.bdns_client import close_client
@@ -53,8 +53,8 @@ app = FastAPI(
     title="Hola Ayudas API",
     description="Proxy API for Spanish BDNS grants database",
     version="0.1.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
     lifespan=lifespan,
 )
 
