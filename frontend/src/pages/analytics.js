@@ -200,7 +200,7 @@ export async function renderAnalyticsPage(params = {}) {
               </button>
             </form>
             <p class="text-xs text-gray-400 mt-2">
-              La busqueda es semantica: "sudamerica" encuentra todos los paises, "lgtbi" incluye terminos relacionados.
+              Busca por tema o palabra clave para ver su evolucion en convocatorias.
             </p>
           </div>
           <div id="keyword-trend-results"></div>

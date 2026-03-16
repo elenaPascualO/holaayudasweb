@@ -32,7 +32,6 @@ const app = document.querySelector('#app')
 function render(pageHtml) {
   app.innerHTML =
     createHeader() +
-    createDisclaimer() +
     `<main class="max-w-5xl mx-auto px-4 py-6">${pageHtml}</main>` +
     createFooter()
   setupEventListeners()
@@ -43,23 +42,6 @@ function render(pageHtml) {
  */
 function renderLoading() {
   render(createLoadingSpinner())
-}
-
-/**
- * Create the beta disclaimer banner.
- */
-function createDisclaimer() {
-  return `
-    <div class="bg-amber-50 border-b border-amber-200">
-      <div class="max-w-5xl mx-auto px-4 py-2 flex items-start gap-2">
-        <span class="text-amber-600 text-sm mt-0.5">&#9432;</span>
-        <p class="text-xs text-amber-700">
-          <strong>Base de datos en construccion:</strong> Estamos replicando y enriqueciendo progresivamente la BDNS.
-          Algunos detalles pueden estar incompletos. Actualizamos los datos diariamente.
-        </p>
-      </div>
-    </div>
-  `
 }
 
 /**
