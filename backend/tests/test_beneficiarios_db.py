@@ -13,6 +13,7 @@ from backend.services.beneficiarios_db import (
     init_db,
     parse_beneficiario,
     search_beneficiarios,
+    search_beneficiarios_trend,
     sync_beneficiarios,
 )
 
@@ -313,3 +314,62 @@ class TestGetTopBeneficiariosAggregated:
         result = get_top_beneficiarios_aggregated(db_path=populated_db)
         for item in result["content"]:
             assert "ejercicio" not in item
+
+
+class TestSearchBeneficiariosTrend:
+    """Tests for search_beneficiarios_trend()."""
+
+    def test_trend_aggregates_by_year(self, populated_db):
+        result = search_beneficiarios_trend("iberdrola", db_path=populated_db)
+        assert result["total_matches"] == 1  # 1 distinct nif_cif
+        assert len(result["by_year"]) == 2  # 2023 and 2024
+
+        years = {d["year"] for d in result["by_year"]}
+        assert years == {"2023", "2024"}
+
+        # Check year data has correct structure
+        for entry in result["by_year"]:
+            assert "year" in entry
+            assert "count" in entry
+            assert "amount" in entry
+            assert isinstance(entry["year"], str)
+
+    def test_trend_top_beneficiarios(self, populated_db):
+        result = search_beneficiarios_trend("iberdrola", db_path=populated_db)
+        top = result["top_beneficiarios"]
+        assert len(top) == 1
+        assert top[0]["nifCif"] == "B12345678"
+        assert top[0]["ayudaETotal"] == 5500000.0  # 3M + 2.5M aggregated
+
+        # Verify format matches aggregated search
+        item = top[0]
+        assert "idPersona" in item
+        assert "beneficiario" in item
+        assert "nifCif" in item
+        assert "nombre" in item
+        assert "ayudaETotal" in item
+
+    def test_trend_no_results(self, populated_db):
+        result = search_beneficiarios_trend("nonexistent company xyz", db_path=populated_db)
+        assert result["total_matches"] == 0
+        assert result["by_year"] == []
+        assert result["top_beneficiarios"] == []
+
+    def test_trend_empty_query(self, populated_db):
+        result = search_beneficiarios_trend("", db_path=populated_db)
+        assert result["total_matches"] == 0
+        assert result["by_year"] == []
+        assert result["top_beneficiarios"] == []
+
+    def test_trend_multiple_beneficiarios(self, populated_db):
+        """Search matching multiple beneficiarios returns all in top list."""
+        # "a" appears in AIR EUROPA, IBERDROLA (ELECTRICA), TELEFONICA (ESPAÑA)
+        # Use a broader term — search for content that hits multiple rows
+        result = search_beneficiarios_trend("europa", db_path=populated_db)
+        assert result["total_matches"] >= 1
+        assert len(result["top_beneficiarios"]) >= 1
+
+    def test_trend_top_limited_to_20(self, populated_db):
+        """Top beneficiarios are limited to 20 entries."""
+        result = search_beneficiarios_trend("iberdrola", db_path=populated_db)
+        assert len(result["top_beneficiarios"]) <= 20

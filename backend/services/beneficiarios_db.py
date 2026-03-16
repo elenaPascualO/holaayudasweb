@@ -282,6 +282,99 @@ async def search_beneficiarios_async(
     )
 
 
+def search_beneficiarios_trend(q: str, db_path: str | None = None) -> dict:
+    """Search beneficiarios by name and aggregate results for trend analysis.
+
+    Uses FTS5 to find matching beneficiarios, then aggregates by year
+    (count + total amount) and returns top beneficiarios by total amount.
+
+    Args:
+        q: Search text (e.g., "Iberdrola").
+        db_path: Override path (useful for tests).
+
+    Returns:
+        Dict with total_matches, by_year, and top_beneficiarios.
+    """
+    fts_query = _build_fts_query(q)
+    if not fts_query:
+        return {"total_matches": 0, "by_year": [], "top_beneficiarios": []}
+
+    conn = _get_connection(db_path)
+    try:
+        fts_filter = (
+            "b.id IN (SELECT rowid FROM beneficiarios_fts "
+            "WHERE beneficiarios_fts MATCH ?)"
+        )
+
+        # Total distinct beneficiarios matching
+        total = conn.execute(
+            f"SELECT COUNT(DISTINCT b.nif_cif) FROM beneficiarios b "
+            f"WHERE {fts_filter} AND b.nif_cif IS NOT NULL",
+            (fts_query,),
+        ).fetchone()[0]
+
+        if total == 0:
+            return {"total_matches": 0, "by_year": [], "top_beneficiarios": []}
+
+        # Aggregate by year
+        year_rows = conn.execute(
+            f"SELECT b.ejercicio, COUNT(DISTINCT b.nif_cif) as cnt, "
+            f"SUM(b.ayuda_e_total) as amount "
+            f"FROM beneficiarios b "
+            f"WHERE {fts_filter} AND b.nif_cif IS NOT NULL "
+            f"GROUP BY b.ejercicio ORDER BY b.ejercicio",
+            (fts_query,),
+        ).fetchall()
+
+        by_year = [
+            {
+                "year": str(row["ejercicio"]),
+                "count": row["cnt"],
+                "amount": round(row["amount"] or 0, 2),
+            }
+            for row in year_rows
+        ]
+
+        # Top 20 beneficiarios by total amount across all years
+        top_rows = conn.execute(
+            f"SELECT MAX(b.id_persona) as id_persona, "
+            f"MAX(b.beneficiario) as beneficiario, "
+            f"b.nif_cif, MAX(b.nombre) as nombre, "
+            f"SUM(b.ayuda_e_total) as ayuda_e_total "
+            f"FROM beneficiarios b "
+            f"WHERE {fts_filter} AND b.nif_cif IS NOT NULL "
+            f"GROUP BY b.nif_cif "
+            f"ORDER BY SUM(b.ayuda_e_total) DESC LIMIT 20",
+            (fts_query,),
+        ).fetchall()
+
+        top_beneficiarios = [
+            {
+                "idPersona": row["id_persona"],
+                "beneficiario": row["beneficiario"],
+                "nifCif": row["nif_cif"],
+                "nombre": row["nombre"],
+                "ayudaETotal": row["ayuda_e_total"],
+            }
+            for row in top_rows
+        ]
+
+        return {
+            "total_matches": total,
+            "by_year": by_year,
+            "top_beneficiarios": top_beneficiarios,
+        }
+    finally:
+        conn.close()
+
+
+async def search_beneficiarios_trend_async(
+    q: str, db_path: str | None = None
+) -> dict:
+    """Async wrapper for search_beneficiarios_trend."""
+    return await asyncio.to_thread(search_beneficiarios_trend, q, db_path)
+
+
 def get_top_beneficiarios_aggregated(
     page: int = 0,
     page_size: int = 20,

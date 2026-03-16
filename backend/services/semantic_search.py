@@ -4,6 +4,10 @@ import logging
 
 import numpy as np
 
+from backend.services.beneficiarios_db import (
+    has_data as has_beneficiarios_data,
+    search_beneficiarios_trend,
+)
 from backend.services.convocatorias_db import (
     _row_to_search_result,
     aggregate_by_year_for_ids,
@@ -233,7 +237,12 @@ async def keyword_trend(
         Dict with query, total_matches, by_year: [{year, count, budget}].
     """
     if not query or not query.strip():
-        return {"query": query, "total_matches": 0, "by_year": []}
+        return {
+            "query": query,
+            "total_matches": 0,
+            "by_year": [],
+            "beneficiarios": None,
+        }
 
     # Step 1: FTS5 pre-filter with high limit
     fts_candidates = search_fts(query, limit=fts_limit)
@@ -274,14 +283,22 @@ async def keyword_trend(
     # Step 4: Union of FTS matches + embedding matches
     matched_ids = list(fts_ids | embedding_ids)
 
-    if not matched_ids:
-        return {"query": query, "total_matches": 0, "by_year": []}
+    # Step 5: Aggregate convocatorias by year
+    by_year = aggregate_by_year_for_ids(matched_ids) if matched_ids else []
 
-    # Step 5: Aggregate by year
-    by_year = aggregate_by_year_for_ids(matched_ids)
+    # Step 6: Search beneficiarios
+    beneficiarios_result = None
+    try:
+        if has_beneficiarios_data():
+            benef_data = search_beneficiarios_trend(query)
+            if benef_data["total_matches"] > 0:
+                beneficiarios_result = benef_data
+    except Exception as e:
+        logger.error("Beneficiarios trend search failed: %s", e)
 
     return {
         "query": query,
         "total_matches": len(matched_ids),
         "by_year": by_year,
+        "beneficiarios": beneficiarios_result,
     }
