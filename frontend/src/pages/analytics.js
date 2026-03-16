@@ -26,6 +26,26 @@ let _keywordCharts = { convBudget: null, benefAmount: null }
 let _keywordQuery = null
 
 /**
+ * Get the current analytics page URL (reads live from address bar so it
+ * always reflects the latest tab / keyword state after replaceState calls).
+ * @returns {string}
+ */
+function currentReturnTo() {
+  return window.location.pathname + window.location.search
+}
+
+/**
+ * Build a URL with returnTo pointing back to the current analytics page.
+ * Reads the URL dynamically so chart onClick handlers always capture the
+ * latest tab/keyword state.
+ * @param {string} url - Target URL (must already contain ?)
+ * @returns {string} URL with returnTo appended
+ */
+function appendReturnTo(url) {
+  return `${url}&returnTo=${encodeURIComponent(currentReturnTo())}`
+}
+
+/**
  * Render the analytics dashboard page.
  * @param {Object} params - Query parameters
  * @returns {Promise<string>} HTML
@@ -153,7 +173,7 @@ export async function renderAnalyticsPage(params = {}) {
               <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">
                 Top 10 organismos convocantes
               </h2>
-              ${createTopOrgansTable(topOrgans)}
+              ${createTopOrgansTable(topOrgans, currentReturnTo())}
             </div>
 
             <!-- Status donut -->
@@ -251,9 +271,10 @@ function createSummaryCards(summary) {
 /**
  * Create top organs ranking table.
  * @param {Array} organs
+ * @param {string} returnTo - URL to return to from search results
  * @returns {string} HTML
  */
-function createTopOrgansTable(organs) {
+function createTopOrgansTable(organs, returnTo) {
   if (!organs || organs.length === 0) {
     return '<p class="text-sm text-gray-400">Sin datos</p>'
   }
@@ -269,9 +290,11 @@ function createTopOrgansTable(organs) {
           </tr>
         </thead>
         <tbody>
-          ${organs.map((org, i) => `
+          ${organs.map((org, i) => {
+            const orgUrl = `/buscar?q=${encodeURIComponent(org.label)}&returnTo=${encodeURIComponent(returnTo)}`
+            return `
             <tr class="border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
-                data-link="/buscar?q=${encodeURIComponent(org.label)}">
+                data-link="${orgUrl}">
               <td class="py-2.5 text-gray-400">${i + 1}</td>
               <td class="py-2.5">
                 <div class="font-medium text-gray-900">${org.label}</div>
@@ -280,7 +303,7 @@ function createTopOrgansTable(organs) {
               <td class="py-2.5 text-right text-gray-700">${formatNumber(org.count)}</td>
               <td class="py-2.5 text-right text-gray-700">${formatCurrency(org.budget)}</td>
             </tr>
-          `).join('')}
+          `}).join('')}
         </tbody>
       </table>
     </div>
@@ -323,7 +346,7 @@ export function initAnalyticsCharts() {
           if (elements.length > 0) {
             const idx = elements[0].index
             const year = byYear[idx].label
-            navigate(`/buscar?yearFrom=${year}&yearTo=${year}`)
+            navigate(appendReturnTo(`/buscar?yearFrom=${year}&yearTo=${year}`))
           }
         },
       },
@@ -376,7 +399,7 @@ export function initAnalyticsCharts() {
           if (elements.length > 0) {
             const idx = elements[0].index
             const year = byYear[idx].label
-            navigate(`/buscar?yearFrom=${year}&yearTo=${year}`)
+            navigate(appendReturnTo(`/buscar?yearFrom=${year}&yearTo=${year}`))
           }
         },
       },
@@ -410,7 +433,7 @@ export function initAnalyticsCharts() {
           if (elements.length > 0) {
             const idx = elements[0].index
             const theme = byTheme[idx]
-            navigate(`/buscar?descripcionFinalidad=${encodeURIComponent(theme.label)}`)
+            navigate(appendReturnTo(`/buscar?descripcionFinalidad=${encodeURIComponent(theme.label)}`))
           }
         },
       },
@@ -444,7 +467,7 @@ export function initAnalyticsCharts() {
           if (elements.length > 0) {
             const idx = elements[0].index
             const region = byRegion[idx]
-            navigate(`/buscar?regionDesc=${encodeURIComponent(region.label)}`)
+            navigate(appendReturnTo(`/buscar?regionDesc=${encodeURIComponent(region.label)}`))
           }
         },
       },
@@ -478,7 +501,7 @@ export function initAnalyticsCharts() {
           if (elements.length > 0) {
             const idx = elements[0].index
             const theme = byTheme[idx]
-            navigate(`/buscar?descripcionFinalidad=${encodeURIComponent(theme.label)}`)
+            navigate(appendReturnTo(`/buscar?descripcionFinalidad=${encodeURIComponent(theme.label)}`))
           }
         },
       },
@@ -514,7 +537,7 @@ export function initAnalyticsCharts() {
           if (elements.length > 0) {
             const idx = elements[0].index
             const region = regionsByBudget[idx]
-            navigate(`/buscar?regionDesc=${encodeURIComponent(region.label)}`)
+            navigate(appendReturnTo(`/buscar?regionDesc=${encodeURIComponent(region.label)}`))
           }
         },
       },
@@ -543,7 +566,7 @@ export function initAnalyticsCharts() {
           if (elements.length > 0) {
             const idx = elements[0].index
             const estado = idx === 0 ? 'abiertas' : 'cerradas'
-            navigate(`/buscar?estado=${estado}`)
+            navigate(appendReturnTo(`/buscar?estado=${estado}`))
           }
         },
       },
@@ -654,6 +677,9 @@ async function performKeywordTrendSearch(q) {
       return
     }
 
+    // Snapshot returnTo now (after replaceState has updated the URL)
+    const returnTo = currentReturnTo()
+
     // Build header text
     const parts = []
     if (hasConvocatorias) parts.push(`${formatNumber(total_matches)} ayudas`)
@@ -667,7 +693,7 @@ async function performKeywordTrendSearch(q) {
           <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">
             Ayudas mas relevantes
           </h3>
-          <a href="/buscar?q=${encodeURIComponent(q)}" data-link="/buscar?q=${encodeURIComponent(q)}"
+          <a href="/buscar?q=${encodeURIComponent(q)}&returnTo=${encodeURIComponent(returnTo)}" data-link="/buscar?q=${encodeURIComponent(q)}&returnTo=${encodeURIComponent(returnTo)}"
              class="text-sm text-primary hover:underline">
             Ver todas &rarr;
           </a>
@@ -685,7 +711,7 @@ async function performKeywordTrendSearch(q) {
           <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">
             Beneficiarios mas relevantes
           </h3>
-          <a href="/beneficiarios?q=${encodeURIComponent(q)}" data-link="/beneficiarios?q=${encodeURIComponent(q)}"
+          <a href="/beneficiarios?q=${encodeURIComponent(q)}&returnTo=${encodeURIComponent(returnTo)}" data-link="/beneficiarios?q=${encodeURIComponent(q)}&returnTo=${encodeURIComponent(returnTo)}"
              class="text-sm text-primary hover:underline">
             Ver en beneficiarios &rarr;
           </a>
@@ -872,7 +898,7 @@ async function filterResultsByYear(query, year, originalGrants, beneficiariosDat
 
   // Update "Ver todas" link for convocatorias
   if (linkEl) {
-    const href = `/buscar?q=${encodeURIComponent(query)}&yearFrom=${year}&yearTo=${year}`
+    const href = `/buscar?q=${encodeURIComponent(query)}&yearFrom=${year}&yearTo=${year}&returnTo=${encodeURIComponent(currentReturnTo())}`
     linkEl.setAttribute('href', href)
     linkEl.setAttribute('data-link', href)
   }
@@ -926,7 +952,7 @@ function clearYearFilter(query, originalGrants, beneficiariosData) {
   if (filterEl) filterEl.classList.add('hidden')
 
   if (linkEl) {
-    const href = `/buscar?q=${encodeURIComponent(query)}`
+    const href = `/buscar?q=${encodeURIComponent(query)}&returnTo=${encodeURIComponent(currentReturnTo())}`
     linkEl.setAttribute('href', href)
     linkEl.setAttribute('data-link', href)
   }

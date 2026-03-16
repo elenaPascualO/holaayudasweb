@@ -11,6 +11,22 @@ import { createEmptyState } from '../components/EmptyState.js'
 import { formatNumber } from '../utils/formatters.js'
 
 /**
+ * Create a back link to return to analytics when navigated from there.
+ * @param {string|undefined} returnTo - URL to return to
+ * @returns {string} HTML (empty if no returnTo)
+ */
+function createBackLink(returnTo) {
+  if (!returnTo) return ''
+  return `<a href="${returnTo}" data-link
+     class="inline-flex items-center gap-1 text-sm text-primary hover:underline mb-3 no-underline">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+    </svg>
+    Volver a Estadisticas
+  </a>`
+}
+
+/**
  * Render the search results page.
  * @param {Object} params - Query parameters (q, page, pageSize, etc.)
  * @returns {Promise<string>} HTML
@@ -80,6 +96,7 @@ export async function renderSearchPage(params) {
     }
   } catch {
     return `
+      ${createBackLink(params.returnTo)}
       ${createSearchBar(q)}
       ${createQuickFilters()}
 
@@ -97,6 +114,7 @@ export async function renderSearchPage(params) {
 
   if (!results.content || results.content.length === 0) {
     return `
+      ${createBackLink(params.returnTo)}
       ${createSearchBar(q)}
       ${createQuickFilters()}
 
@@ -129,12 +147,14 @@ export async function renderSearchPage(params) {
     if (params.descripcionFinalidad) baseParams.set('descripcionFinalidad', params.descripcionFinalidad)
     if (params.regionDesc) baseParams.set('regionDesc', params.regionDesc)
   }
+  if (params.returnTo) baseParams.set('returnTo', params.returnTo)
   const baseUrl = `/buscar?${baseParams.toString()}`
 
   // Check if results have relevance scores
   const hasScores = results.content.some(r => r._score != null)
 
   return `
+    ${createBackLink(params.returnTo)}
     ${createSearchBar(q)}
     ${createQuickFilters()}
 

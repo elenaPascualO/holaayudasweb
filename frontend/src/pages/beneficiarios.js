@@ -9,6 +9,22 @@ import { createEmptyState } from '../components/EmptyState.js'
 import { formatNumber } from '../utils/formatters.js'
 
 /**
+ * Create a back link to return to analytics when navigated from there.
+ * @param {string|undefined} returnTo - URL to return to
+ * @returns {string} HTML (empty if no returnTo)
+ */
+function createBackLink(returnTo) {
+  if (!returnTo) return ''
+  return `<a href="${returnTo}" data-link
+     class="inline-flex items-center gap-1 text-sm text-primary hover:underline mb-3 no-underline">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+    </svg>
+    Volver a Estadisticas
+  </a>`
+}
+
+/**
  * Render the transparencia page.
  * @param {Object} params - Query parameters (anio, nifCif, q, page)
  * @returns {Promise<string>} HTML
@@ -48,6 +64,7 @@ export async function renderTransparenciaPage(params) {
     results = await searchTopBeneficiaries(searchParams)
   } catch {
     return `
+      ${createBackLink(params.returnTo)}
       ${createPageHeader(years, anio, nifCif, q)}
       ${createEmptyState(
         'Error al cargar',
@@ -63,6 +80,7 @@ export async function renderTransparenciaPage(params) {
         ? `No se encontraron grandes beneficiarios con NIF/CIF "${nifCif}".`
         : 'No hay datos de grandes beneficiarios para el periodo seleccionado.'
     return `
+      ${createBackLink(params.returnTo)}
       ${createPageHeader(years, anio, nifCif, q)}
       ${createEmptyState('Sin resultados', emptyMsg)}
     `
@@ -82,9 +100,11 @@ export async function renderTransparenciaPage(params) {
   if (q) baseParams.set('q', q)
   const maxForUrl = page === 0 ? pageMax : globalMax
   baseParams.set('maxImporte', maxForUrl)
+  if (params.returnTo) baseParams.set('returnTo', params.returnTo)
   const baseUrl = `/beneficiarios?${baseParams.toString()}`
 
   return `
+    ${createBackLink(params.returnTo)}
     ${createPageHeader(years, anio, nifCif, q)}
 
     <p class="text-sm text-gray-400 mb-4">

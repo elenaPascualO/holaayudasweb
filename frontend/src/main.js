@@ -531,6 +531,11 @@ function handleBeneficiariosFilter(e) {
   const nifCif = formData.get('nifCif')?.trim()
   if (nifCif) params.set('nifCif', nifCif)
 
+  // Preserve returnTo if present in current URL
+  const currentBenefParams = new URLSearchParams(window.location.search)
+  const returnTo = currentBenefParams.get('returnTo')
+  if (returnTo) params.set('returnTo', returnTo)
+
   track(events.BENEFICIARIOS_FILTER, { anio: anio || '', nifCif: nifCif || '', q: q || '' })
   navigate(`/beneficiarios?${params.toString()}`)
 }
@@ -649,6 +654,10 @@ function handleSemanticFilterSubmit(e) {
     const val = currentParams.get(key)
     if (val) params.set(key, val)
   }
+
+  // Preserve returnTo if present
+  const returnTo = currentParams.get('returnTo')
+  if (returnTo) params.set('returnTo', returnTo)
 
   navigate(`/buscar?${params.toString()}`)
 }
