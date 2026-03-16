@@ -21,8 +21,8 @@ _BASE_URL = "https://www.holaayudas.com"
 _STATIC_PAGES = [
     {"loc": "/", "changefreq": "daily", "priority": "1.0"},
     {"loc": "/buscar", "changefreq": "daily", "priority": "0.8"},
-    {"loc": "/datos", "changefreq": "weekly", "priority": "0.7"},
-    {"loc": "/transparencia", "changefreq": "weekly", "priority": "0.7"},
+    {"loc": "/estadisticas", "changefreq": "weekly", "priority": "0.7"},
+    {"loc": "/beneficiarios", "changefreq": "weekly", "priority": "0.7"},
     {"loc": "/contacto", "changefreq": "monthly", "priority": "0.3"},
 ]
 

@@ -11,7 +11,7 @@ import { createLoadingSpinner } from './components/LoadingSpinner.js'
 import { renderHomePage } from './pages/home.js'
 import { renderSearchPage } from './pages/search.js'
 import { renderDetailPage } from './pages/detail.js'
-import { renderTransparenciaPage } from './pages/transparencia.js'
+import { renderTransparenciaPage } from './pages/beneficiarios.js'
 import { renderConcesionesPage } from './pages/concesiones.js'
 import { renderContactoPage } from './pages/contacto.js'
 import { renderAnalyticsPage, initAnalyticsCharts, initKeywordTrend } from './pages/analytics.js'
@@ -117,9 +117,9 @@ function setupEventListeners() {
   }
 
   // Transparencia filter form
-  const transparenciaForm = document.getElementById('transparencia-filters')
-  if (transparenciaForm) {
-    transparenciaForm.addEventListener('submit', handleTransparenciaFilter)
+  const beneficiariosForm = document.getElementById('beneficiarios-filters')
+  if (beneficiariosForm) {
+    beneficiariosForm.addEventListener('submit', handleBeneficiariosFilter)
   }
 
   // Beneficiary drill-down (expand concesiones)
@@ -513,7 +513,7 @@ async function handleLoadConcesiones(e) {
 /**
  * Handle transparencia filter form submission.
  */
-function handleTransparenciaFilter(e) {
+function handleBeneficiariosFilter(e) {
   e.preventDefault()
   const formData = new FormData(e.target)
   const params = new URLSearchParams()
@@ -531,8 +531,8 @@ function handleTransparenciaFilter(e) {
   const nifCif = formData.get('nifCif')?.trim()
   if (nifCif) params.set('nifCif', nifCif)
 
-  track(events.TRANSPARENCIA_FILTER, { anio: anio || '', nifCif: nifCif || '', q: q || '' })
-  navigate(`/transparencia?${params.toString()}`)
+  track(events.BENEFICIARIOS_FILTER, { anio: anio || '', nifCif: nifCif || '', q: q || '' })
+  navigate(`/beneficiarios?${params.toString()}`)
 }
 
 /**
@@ -563,7 +563,7 @@ async function handleBeneficiaryDrillDown(e) {
   container.classList.remove('hidden')
   if (icon) icon.style.transform = 'rotate(180deg)'
   container.innerHTML = createLoadingSpinner()
-  track(events.TRANSPARENCIA_DRILL_DOWN, { nifCif })
+  track(events.BENEFICIARIOS_DRILL_DOWN, { nifCif })
 
   // Read year filter from the ranking container to scope concesiones
   const rankingEl = document.getElementById('beneficiarios-ranking')
@@ -741,16 +741,16 @@ registerRoute('/buscar', async (params) => {
   enrichVisibleCards()
 })
 
-registerRoute('/transparencia', async (params) => {
+registerRoute('/beneficiarios', async (params) => {
   renderLoading()
   const html = await renderTransparenciaPage(params)
   render(html)
   updateMetaTags({
-    title: 'Transparencia - Mayores beneficiarios de subvenciones',
+    title: 'Beneficiarios - Mayores receptores de subvenciones',
     description: 'Ranking de los mayores beneficiarios de subvenciones publicas en España. Consulta quien recibe mas fondos publicos.',
-    path: '/transparencia',
+    path: '/beneficiarios',
   })
-  track(events.TRANSPARENCIA_VIEW, { anio: params.anio || '' })
+  track(events.BENEFICIARIOS_VIEW, { anio: params.anio || '' })
 })
 
 registerRoute('/concesiones', async (params) => {
@@ -800,14 +800,14 @@ registerRoute('/ayuda/:bdnsCode', async (params) => {
   track(events.DETAIL_VIEW, { bdns: params.bdnsCode })
 })
 
-registerRoute('/datos', async (params) => {
+registerRoute('/estadisticas', async (params) => {
   renderLoading()
   const html = await renderAnalyticsPage(params)
   render(html)
   updateMetaTags({
     title: 'Datos y estadisticas de subvenciones publicas',
     description: 'Dashboard con datos y estadisticas de subvenciones publicas en España. Tendencias, presupuestos, regiones y tematicas.',
-    path: '/datos',
+    path: '/estadisticas',
   })
   initAnalyticsCharts()
   initKeywordTrend()

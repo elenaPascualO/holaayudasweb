@@ -10,17 +10,19 @@ import {
   fetchAnalyticsTopOrgans,
   fetchAnalyticsStatus,
   fetchKeywordTrend,
+  searchTopBeneficiaries,
   semanticSearch,
 } from '../utils/api.js'
 import { formatNumber, formatCurrency } from '../utils/formatters.js'
 import { navigate } from '../router.js'
 import { createGrantCard } from '../components/GrantCard.js'
+import { createBeneficiaryList } from '../components/BeneficiaryRow.js'
 
 // Module-level state for chart data (populated during render, used by initAnalyticsCharts)
 let _chartData = null
 
 // Keyword trend state
-let _keywordCharts = { count: null, budget: null }
+let _keywordCharts = { convBudget: null, benefAmount: null }
 let _keywordQuery = null
 
 /**
@@ -200,7 +202,7 @@ export async function renderAnalyticsPage(params = {}) {
               </button>
             </form>
             <p class="text-xs text-gray-400 mt-2">
-              Busca por tema o palabra clave para ver su evolucion en convocatorias.
+              Busca por tema, palabra clave o nombre de beneficiario para ver la evolucion en ayudas.
             </p>
           </div>
           <div id="keyword-trend-results"></div>
@@ -577,7 +579,7 @@ export function initKeywordTrend() {
       e.preventDefault()
       const q = input.value.trim()
       if (!q) return
-      history.replaceState(null, '', `/datos?tab=explorar&keyword=${encodeURIComponent(q)}`)
+      history.replaceState(null, '', `/estadisticas?tab=explorar&keyword=${encodeURIComponent(q)}`)
       performKeywordTrendSearch(q)
     })
   }
@@ -604,12 +606,12 @@ function switchTab(tab, generalEl, explorarEl, tabsEl) {
   if (tab === 'general') {
     generalEl.classList.remove('hidden')
     explorarEl.classList.add('hidden')
-    history.replaceState(null, '', '/datos')
+    history.replaceState(null, '', '/estadisticas')
   } else {
     generalEl.classList.add('hidden')
     explorarEl.classList.remove('hidden')
     const keyword = _keywordQuery ? `&keyword=${encodeURIComponent(_keywordQuery)}` : ''
-    history.replaceState(null, '', `/datos?tab=explorar${keyword}`)
+    history.replaceState(null, '', `/estadisticas?tab=explorar${keyword}`)
   }
 }
 
@@ -637,10 +639,12 @@ async function performKeywordTrendSearch(q) {
       semanticSearch({ q, topK: 20 }),
     ])
 
-    const { total_matches, by_year } = trendData
+    const { total_matches, by_year, beneficiarios } = trendData
     const grants = grantsData.content || []
+    const hasBeneficiarios = beneficiarios && beneficiarios.total_matches > 0
+    const hasConvocatorias = total_matches > 0
 
-    if (total_matches === 0) {
+    if (!hasConvocatorias && !hasBeneficiarios) {
       resultsEl.innerHTML = `
         <div class="bg-white rounded-xl border border-gray-100 p-8 text-center">
           <p class="text-gray-500">No se encontraron ayudas para "${q}".</p>
@@ -650,31 +654,77 @@ async function performKeywordTrendSearch(q) {
       return
     }
 
+    // Build header text
+    const parts = []
+    if (hasConvocatorias) parts.push(`${formatNumber(total_matches)} ayudas`)
+    if (hasBeneficiarios) parts.push(`${formatNumber(beneficiarios.total_matches)} beneficiarios`)
+    const headerText = parts.join(' y ')
+
+    // Convocatorias section (conditional)
+    const grantsSection = hasConvocatorias ? `
+      <div>
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+            Ayudas mas relevantes
+          </h3>
+          <a href="/buscar?q=${encodeURIComponent(q)}" data-link="/buscar?q=${encodeURIComponent(q)}"
+             class="text-sm text-primary hover:underline">
+            Ver todas &rarr;
+          </a>
+        </div>
+        <div id="keyword-grants-list" class="space-y-3">
+          ${grants.map(g => createGrantCard(g)).join('')}
+        </div>
+      </div>
+    ` : ''
+
+    // Beneficiarios section (conditional)
+    const beneficiariosSection = hasBeneficiarios ? `
+      <div>
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+            Beneficiarios mas relevantes
+          </h3>
+          <a href="/beneficiarios?q=${encodeURIComponent(q)}" data-link="/beneficiarios?q=${encodeURIComponent(q)}"
+             class="text-sm text-primary hover:underline">
+            Ver en beneficiarios &rarr;
+          </a>
+        </div>
+        <div id="keyword-beneficiarios-list" class="bg-white rounded-xl border border-gray-100 p-4">
+          ${createBeneficiaryList(beneficiarios.top_beneficiarios, 1)}
+        </div>
+      </div>
+    ` : ''
+
     // Build results HTML
     resultsEl.innerHTML = `
       <p class="text-sm text-gray-600 mb-6">
-        <span class="font-semibold text-gray-900">${formatNumber(total_matches)}</span> ayudas encontradas para
+        <span class="font-semibold text-gray-900">${headerText}</span> encontrados para
         "<span class="font-medium">${q}</span>"
       </p>
 
-      <!-- Trend charts side by side -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <!-- Trend charts — one per data source, conditional -->
+      <div class="grid grid-cols-1 ${hasConvocatorias && hasBeneficiarios ? 'lg:grid-cols-2' : ''} gap-6 mb-8">
+        ${hasConvocatorias ? `
         <div class="bg-white rounded-xl border border-gray-100 p-6">
           <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">
-            Ayudas por año
+            Presupuesto convocado por año
           </h3>
           <div class="h-64">
-            <canvas id="chart-keyword-count"></canvas>
+            <canvas id="chart-keyword-conv-budget"></canvas>
           </div>
         </div>
+        ` : ''}
+        ${hasBeneficiarios ? `
         <div class="bg-white rounded-xl border border-gray-100 p-6">
           <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">
-            Presupuesto por año
+            Total concesionado por año
           </h3>
           <div class="h-64">
-            <canvas id="chart-keyword-budget"></canvas>
+            <canvas id="chart-keyword-benef-amount"></canvas>
           </div>
         </div>
+        ` : ''}
       </div>
 
       <!-- Year filter label -->
@@ -685,23 +735,15 @@ async function performKeywordTrendSearch(q) {
         </span>
       </div>
 
-      <!-- Grants list -->
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">
-          Ayudas mas relevantes
-        </h3>
-        <a href="/buscar?q=${encodeURIComponent(q)}" data-link="/buscar?q=${encodeURIComponent(q)}"
-           class="text-sm text-primary hover:underline">
-          Ver todas en busqueda &rarr;
-        </a>
-      </div>
-      <div id="keyword-grants-list" class="space-y-3">
-        ${grants.map(g => createGrantCard(g)).join('')}
+      <!-- Listings side by side -->
+      <div class="grid grid-cols-1 ${hasConvocatorias && hasBeneficiarios ? 'lg:grid-cols-2' : ''} gap-6">
+        ${grantsSection}
+        ${beneficiariosSection}
       </div>
     `
 
     // Initialize trend charts
-    initKeywordCharts(by_year, q, grants)
+    initKeywordCharts(by_year, q, grants, beneficiarios)
   } catch (e) {
     resultsEl.innerHTML = `
       <div class="bg-white rounded-xl border border-gray-100 p-8 text-center">
@@ -713,63 +755,33 @@ async function performKeywordTrendSearch(q) {
 }
 
 /**
- * Create and wire keyword trend charts (count + budget by year).
+ * Create and wire keyword trend charts (conv budget + benef amount by year).
+ * @param {Array} byYear - Convocatorias by year data
+ * @param {string} query - Search query
+ * @param {Array} grants - Semantic search grants
+ * @param {Object|null} beneficiariosData - Beneficiarios trend data or null
  */
-function initKeywordCharts(byYear, query, grants) {
+function initKeywordCharts(byYear, query, grants, beneficiariosData) {
   if (typeof Chart === 'undefined') return
 
   // Destroy previous charts
-  if (_keywordCharts.count) _keywordCharts.count.destroy()
-  if (_keywordCharts.budget) _keywordCharts.budget.destroy()
+  if (_keywordCharts.convBudget) _keywordCharts.convBudget.destroy()
+  if (_keywordCharts.benefAmount) _keywordCharts.benefAmount.destroy()
 
-  const primaryColor = '#4f46e5'
-  const labels = byYear.map(d => d.year)
-  const counts = byYear.map(d => d.count)
-  const budgets = byYear.map(d => d.budget)
+  const hasBenef = beneficiariosData && beneficiariosData.by_year && beneficiariosData.by_year.length > 0
+  const benefByYear = hasBenef ? beneficiariosData.by_year : []
 
-  const handleBarClick = async (_, elements) => {
-    if (elements.length === 0) return
-    const idx = elements[0].index
-    const year = byYear[idx].year
-    filterGrantsByYear(query, year)
-  }
+  // Convocatorias budget chart (green) — uses convocatorias years only
+  const convBudgetCtx = document.getElementById('chart-keyword-conv-budget')
+  if (convBudgetCtx && byYear.length > 0) {
+    const convYears = byYear.map(d => d.year)
 
-  // Count chart
-  const countCtx = document.getElementById('chart-keyword-count')
-  if (countCtx) {
-    _keywordCharts.count = new Chart(countCtx, {
+    _keywordCharts.convBudget = new Chart(convBudgetCtx, {
       type: 'bar',
       data: {
-        labels,
+        labels: convYears,
         datasets: [{
-          label: 'Ayudas',
-          data: counts,
-          backgroundColor: primaryColor,
-          borderRadius: 4,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { beginAtZero: true, ticks: { callback: v => formatNumber(v) } },
-        },
-        onClick: handleBarClick,
-      },
-    })
-  }
-
-  // Budget chart
-  const budgetCtx = document.getElementById('chart-keyword-budget')
-  if (budgetCtx) {
-    _keywordCharts.budget = new Chart(budgetCtx, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Presupuesto',
-          data: budgets,
+          data: byYear.map(d => d.budget),
           backgroundColor: '#10b981',
           borderRadius: 4,
         }],
@@ -777,11 +789,58 @@ function initKeywordCharts(byYear, query, grants) {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: { label: ctx => formatCurrency(ctx.raw) },
+          },
+        },
         scales: {
           y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } },
         },
-        onClick: handleBarClick,
+        onClick: (event, elements, chart) => {
+          if (elements.length === 0) return
+          const idx = elements[0].index
+          const year = chart.data.labels[idx]
+          filterResultsByYear(query, year, grants, beneficiariosData)
+        },
+      },
+    })
+  }
+
+  // Beneficiarios amount chart (amber) — uses beneficiarios years only
+  const benefAmountCtx = document.getElementById('chart-keyword-benef-amount')
+  if (benefAmountCtx && benefByYear.length > 0) {
+    const benefYears = benefByYear.map(d => d.year)
+
+    _keywordCharts.benefAmount = new Chart(benefAmountCtx, {
+      type: 'bar',
+      data: {
+        labels: benefYears,
+        datasets: [{
+          data: benefByYear.map(d => d.amount),
+          backgroundColor: '#f59e0b',
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: { label: ctx => formatCurrency(ctx.raw) },
+          },
+        },
+        scales: {
+          y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } },
+        },
+        onClick: (event, elements, chart) => {
+          if (elements.length === 0) return
+          const idx = elements[0].index
+          const year = chart.data.labels[idx]
+          filterResultsByYear(query, year, grants, beneficiariosData)
+        },
       },
     })
   }
@@ -790,21 +849,20 @@ function initKeywordCharts(byYear, query, grants) {
   const clearBtn = document.getElementById('keyword-clear-year')
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {
-      clearYearFilter(query, grants)
+      clearYearFilter(query, grants, beneficiariosData)
     })
   }
 }
 
 /**
- * Filter grants list by clicking a year bar.
+ * Filter grants and beneficiarios lists by clicking a year bar.
  */
-async function filterGrantsByYear(query, year) {
+async function filterResultsByYear(query, year, originalGrants, beneficiariosData) {
   const listEl = document.getElementById('keyword-grants-list')
+  const benefListEl = document.getElementById('keyword-beneficiarios-list')
   const filterEl = document.getElementById('keyword-year-filter')
   const labelEl = document.getElementById('keyword-year-label')
   const linkEl = listEl?.previousElementSibling?.querySelector('a[data-link]')
-
-  if (!listEl) return
 
   // Show year filter badge
   if (filterEl && labelEl) {
@@ -812,35 +870,56 @@ async function filterGrantsByYear(query, year) {
     filterEl.classList.remove('hidden')
   }
 
-  // Update "Ver todas" link
+  // Update "Ver todas" link for convocatorias
   if (linkEl) {
     const href = `/buscar?q=${encodeURIComponent(query)}&yearFrom=${year}&yearTo=${year}`
     linkEl.setAttribute('href', href)
     linkEl.setAttribute('data-link', href)
   }
 
-  listEl.innerHTML = `
-    <div class="flex items-center justify-center py-8">
-      <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-    </div>
-  `
+  // Filter convocatorias
+  if (listEl) {
+    listEl.innerHTML = `
+      <div class="flex items-center justify-center py-8">
+        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+      </div>
+    `
+    try {
+      const data = await semanticSearch({ q: query, topK: 20, yearFrom: year, yearTo: year })
+      const grants = data.content || []
+      listEl.innerHTML = grants.length > 0
+        ? grants.map(g => createGrantCard(g)).join('')
+        : '<p class="text-sm text-gray-400 py-4">No hay ayudas para este año.</p>'
+    } catch {
+      listEl.innerHTML = '<p class="text-sm text-gray-400 py-4">Error al filtrar.</p>'
+    }
+  }
 
-  try {
-    const data = await semanticSearch({ q: query, topK: 20, yearFrom: year, yearTo: year })
-    const grants = data.content || []
-    listEl.innerHTML = grants.length > 0
-      ? grants.map(g => createGrantCard(g)).join('')
-      : '<p class="text-sm text-gray-400 py-4">No hay ayudas para este año.</p>'
-  } catch {
-    listEl.innerHTML = '<p class="text-sm text-gray-400 py-4">Error al filtrar.</p>'
+  // Filter beneficiarios
+  if (benefListEl && beneficiariosData) {
+    benefListEl.innerHTML = `
+      <div class="flex items-center justify-center py-8">
+        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+      </div>
+    `
+    try {
+      const data = await searchTopBeneficiaries({ q: query, anio: year, pageSize: 20 })
+      const items = data.content || []
+      benefListEl.innerHTML = items.length > 0
+        ? createBeneficiaryList(items, 1)
+        : '<p class="text-sm text-gray-400 py-4">No hay beneficiarios para este año.</p>'
+    } catch {
+      benefListEl.innerHTML = '<p class="text-sm text-gray-400 py-4">Error al filtrar.</p>'
+    }
   }
 }
 
 /**
- * Clear year filter and restore original grants.
+ * Clear year filter and restore original grants and beneficiarios.
  */
-function clearYearFilter(query, originalGrants) {
+function clearYearFilter(query, originalGrants, beneficiariosData) {
   const listEl = document.getElementById('keyword-grants-list')
+  const benefListEl = document.getElementById('keyword-beneficiarios-list')
   const filterEl = document.getElementById('keyword-year-filter')
   const linkEl = listEl?.previousElementSibling?.querySelector('a[data-link]')
 
@@ -854,6 +933,10 @@ function clearYearFilter(query, originalGrants) {
 
   if (listEl && originalGrants) {
     listEl.innerHTML = originalGrants.map(g => createGrantCard(g)).join('')
+  }
+
+  if (benefListEl && beneficiariosData && beneficiariosData.top_beneficiarios) {
+    benefListEl.innerHTML = createBeneficiaryList(beneficiariosData.top_beneficiarios, 1)
   }
 }
 

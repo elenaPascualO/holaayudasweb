@@ -25,12 +25,12 @@ _STATIC_PAGES: dict[str, dict[str, str]] = {
         "title": "Buscar ayudas y subvenciones | Hola Ayudas",
         "description": "Busca ayudas y subvenciones publicas en España. Filtra por tipo de administracion, region, fecha, finalidad y mas.",
     },
-    "/datos": {
+    "/estadisticas": {
         "title": "Datos y estadisticas de subvenciones publicas | Hola Ayudas",
         "description": "Dashboard con datos y estadisticas de subvenciones publicas en España. Tendencias, presupuestos, regiones y tematicas.",
     },
-    "/transparencia": {
-        "title": "Transparencia - Mayores beneficiarios de subvenciones | Hola Ayudas",
+    "/beneficiarios": {
+        "title": "Beneficiarios - Mayores receptores de subvenciones | Hola Ayudas",
         "description": "Ranking de los mayores beneficiarios de subvenciones publicas en España. Consulta quien recibe mas fondos publicos.",
     },
     "/contacto": {

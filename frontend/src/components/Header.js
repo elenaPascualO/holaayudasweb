@@ -13,11 +13,11 @@ export function createHeader() {
           <span class="text-xl font-bold text-gray-900">Hola Ayudas</span>
         </a>
         <nav class="flex items-center gap-3">
-          <a href="/transparencia" data-link
+          <a href="/beneficiarios" data-link
              class="text-sm font-medium px-3 py-1 rounded-full bg-primary/5 text-primary hover:bg-primary/10 transition-colors no-underline">
             Beneficiarios
           </a>
-          <a href="/datos" data-link
+          <a href="/estadisticas" data-link
              class="text-sm font-medium px-3 py-1 rounded-full bg-primary/5 text-primary hover:bg-primary/10 transition-colors no-underline">
             Estadísticas
           </a>

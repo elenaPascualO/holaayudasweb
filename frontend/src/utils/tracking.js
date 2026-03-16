@@ -50,9 +50,9 @@ export const events = {
   CONCESIONES_VIEW: 'concesiones-view',
 
   // Transparencia
-  TRANSPARENCIA_VIEW: 'transparencia-view',
-  TRANSPARENCIA_FILTER: 'transparencia-filter',
-  TRANSPARENCIA_DRILL_DOWN: 'transparencia-drill-down',
+  BENEFICIARIOS_VIEW: 'beneficiarios-view',
+  BENEFICIARIOS_FILTER: 'beneficiarios-filter',
+  BENEFICIARIOS_DRILL_DOWN: 'beneficiarios-drill-down',
 
   // Feedback
   FEEDBACK_OPEN: 'feedback-open',

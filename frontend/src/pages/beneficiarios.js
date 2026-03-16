@@ -82,7 +82,7 @@ export async function renderTransparenciaPage(params) {
   if (q) baseParams.set('q', q)
   const maxForUrl = page === 0 ? pageMax : globalMax
   baseParams.set('maxImporte', maxForUrl)
-  const baseUrl = `/transparencia?${baseParams.toString()}`
+  const baseUrl = `/beneficiarios?${baseParams.toString()}`
 
   return `
     ${createPageHeader(years, anio, nifCif, q)}
@@ -130,7 +130,7 @@ function createPageHeader(years, selectedYear, nifCif, searchQuery = '') {
       </p>
     </div>
 
-    <form id="transparencia-filters" class="flex flex-wrap items-end gap-3 mb-6">
+    <form id="beneficiarios-filters" class="flex flex-wrap items-end gap-3 mb-6">
       <div>
         <label for="nombre-input" class="block text-xs font-medium text-gray-500 mb-1">Buscar por nombre</label>
         <input

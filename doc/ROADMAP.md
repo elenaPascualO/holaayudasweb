@@ -116,7 +116,7 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 **Estado:** Completada (Febrero 2026)
 
 ### Transparencia
-- [x] Vista de grandes beneficiarios (`/transparencia`)
+- [x] Vista de grandes beneficiarios (`/beneficiarios`)
 - [x] Ranking visual (grafico de barras proporcionales)
 - [x] Filtro por año y NIF/CIF
 - [x] Drill-down a concesiones individuales por beneficiario (preview top 5)
@@ -178,7 +178,7 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 
 ### Dashboard de Analytics
 - [x] 7 endpoints bajo `/api/analytics/*` con cache 1h
-- [x] Pagina `/datos` con Chart.js v4 (CDN)
+- [x] Pagina `/estadisticas` con Chart.js v4 (CDN)
 - [x] Graficos: por año (barras), tendencia mensual (linea), por tematica (barras H), por region (barras H), estado (donut)
 - [x] Tabla: top 10 organismos convocantes
 - [x] Tarjetas resumen: total, presupuesto total, abiertas, presupuesto medio

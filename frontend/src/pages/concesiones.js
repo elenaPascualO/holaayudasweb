@@ -152,12 +152,12 @@ function createHeader(ctx) {
     backLabel = 'Volver a la ayuda'
   } else if (returnTo) {
     backUrl = returnTo
-    backLabel = 'Volver a Transparencia'
+    backLabel = 'Volver a Beneficiarios'
   } else {
     const backParams = new URLSearchParams()
     if (anio) backParams.set('anio', anio)
-    backUrl = `/transparencia${backParams.toString() ? '?' + backParams.toString() : ''}`
-    backLabel = 'Volver a Transparencia'
+    backUrl = `/beneficiarios${backParams.toString() ? '?' + backParams.toString() : ''}`
+    backLabel = 'Volver a Beneficiarios'
   }
 
   // Title
