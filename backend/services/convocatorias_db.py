@@ -725,13 +725,19 @@ def _row_to_bdns_detail(row: sqlite3.Row) -> dict:
 
 
 def _parse_iso_date(date_str: str | None) -> datetime | None:
-    """Parse ISO date (YYYY-MM-DD) from SQLite into datetime."""
+    """Parse date from SQLite into datetime.
+
+    Supports ISO format (YYYY-MM-DD) and Spanish format (dd/mm/yyyy)
+    used in text_inicio / text_fin columns.
+    """
     if not date_str:
         return None
-    try:
-        return datetime.strptime(date_str, "%Y-%m-%d")
-    except (ValueError, TypeError):
-        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(date_str, fmt)
+        except (ValueError, TypeError):
+            continue
+    return None
 
 
 def _compute_status(
