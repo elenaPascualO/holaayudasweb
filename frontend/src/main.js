@@ -6,7 +6,7 @@
 
 import './style.css'
 import { initRouter, registerRoute, registerNotFound, navigate } from './router.js'
-import { createHeader } from './components/Header.js'
+import { createHeader, initMobileMenu } from './components/Header.js'
 import { createLoadingSpinner } from './components/LoadingSpinner.js'
 import { renderHomePage } from './pages/home.js'
 import { renderSearchPage } from './pages/search.js'
@@ -34,6 +34,7 @@ function render(pageHtml) {
     createHeader() +
     `<main class="max-w-5xl mx-auto px-4 py-6" tabindex="-1">${pageHtml}</main>` +
     createFooter()
+  initMobileMenu()
   setupEventListeners()
 
   // Move focus to main content after SPA navigation (a11y + CWV)

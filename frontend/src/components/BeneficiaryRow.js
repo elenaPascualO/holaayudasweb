@@ -45,7 +45,7 @@ export function createBeneficiaryRow(item, rank, maxAmount) {
            data-expand-beneficiary="${escapeHtml(nifCif)}">
         <span class="text-sm font-mono text-gray-300 w-8 text-right shrink-0">${rank}</span>
         <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 mb-1">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-0 sm:gap-2 mb-1">
             <p class="text-sm font-medium text-gray-900 truncate">${escapeHtml(name)}</p>
             ${nifCif ? `<span class="text-xs font-mono text-gray-400 shrink-0">${escapeHtml(nifCif)}</span>` : ''}
           </div>

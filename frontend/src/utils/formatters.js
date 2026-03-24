@@ -97,6 +97,26 @@ export function truncate(text, maxLength = 150) {
 }
 
 /**
+ * Format a budget amount as compact Spanish currency (e.g., "1.173M €", "45.200M €").
+ * Uses abbreviations for millions and billions.
+ * @param {number} amount
+ * @returns {string}
+ */
+export function formatCurrencyCompact(amount) {
+  if (amount == null || isNaN(amount)) return ''
+  const abs = Math.abs(amount)
+  if (abs >= 1e9) {
+    const value = amount / 1e9
+    return new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 }).format(value) + 'MM €'
+  }
+  if (abs >= 1e6) {
+    const value = amount / 1e6
+    return new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 }).format(value) + 'M €'
+  }
+  return formatCurrency(amount)
+}
+
+/**
  * Format a large number with Spanish locale separator.
  * @param {number} num
  * @returns {string} e.g., "610.576"

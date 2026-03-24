@@ -13,7 +13,7 @@ import {
   searchTopBeneficiaries,
   semanticSearch,
 } from '../utils/api.js'
-import { formatNumber, formatCurrency } from '../utils/formatters.js'
+import { formatNumber, formatCurrency, formatCurrencyCompact } from '../utils/formatters.js'
 import { navigate } from '../router.js'
 import { createGrantCard } from '../components/GrantCard.js'
 import { createBeneficiaryList } from '../components/BeneficiaryRow.js'
@@ -251,16 +251,17 @@ export async function renderAnalyticsPage(params = {}) {
 function createSummaryCards(summary) {
   const cards = [
     { value: formatNumber(summary.total), label: 'Total convocatorias' },
-    { value: formatCurrency(summary.total_budget), label: 'Presupuesto total' },
+    { value: formatCurrencyCompact(summary.total_budget), valueFull: formatCurrency(summary.total_budget), label: 'Presupuesto total' },
     { value: formatNumber(summary.open_count), label: 'Abiertas ahora' },
     { value: formatCurrency(summary.avg_budget), label: 'Presupuesto medio' },
   ]
 
   return `
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      ${cards.map(({ value, label }) => `
-        <div class="bg-white rounded-xl border border-gray-100 p-4 text-center">
-          <div class="text-xl font-bold text-gray-900">${value}</div>
+      ${cards.map(({ value, valueFull, label }) => `
+        <div class="bg-white rounded-xl border border-gray-100 p-4 text-center"
+             ${valueFull ? `title="${valueFull}"` : ''}>
+          <div class="text-lg sm:text-xl font-bold text-gray-900 truncate">${value}</div>
           <div class="text-xs text-gray-500 mt-1">${label}</div>
         </div>
       `).join('')}
@@ -392,7 +393,7 @@ export function initAnalyticsCharts() {
         scales: {
           y: {
             beginAtZero: true,
-            ticks: { callback: v => formatCurrency(v) },
+            ticks: { callback: v => formatCurrencyCompact(v) },
           },
         },
         onClick: (_, elements) => {
@@ -405,6 +406,9 @@ export function initAnalyticsCharts() {
       },
     })
   }
+
+  const isMobile = window.innerWidth < 640
+  const yTickFont = { size: isMobile ? 9 : 11 }
 
   // By theme — horizontal bar (count)
   const themeCtx = document.getElementById('chart-by-theme')
@@ -427,7 +431,7 @@ export function initAnalyticsCharts() {
         plugins: { legend: { display: false } },
         scales: {
           x: { beginAtZero: true },
-          y: { ticks: { font: { size: 11 } } },
+          y: { ticks: { font: yTickFont } },
         },
         onClick: (_, elements) => {
           if (elements.length > 0) {
@@ -461,7 +465,7 @@ export function initAnalyticsCharts() {
         plugins: { legend: { display: false } },
         scales: {
           x: { beginAtZero: true },
-          y: { ticks: { font: { size: 11 } } },
+          y: { ticks: { font: yTickFont } },
         },
         onClick: (_, elements) => {
           if (elements.length > 0) {
@@ -494,8 +498,8 @@ export function initAnalyticsCharts() {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } },
-          y: { ticks: { font: { size: 11 } } },
+          x: { beginAtZero: true, ticks: { callback: v => formatCurrencyCompact(v) } },
+          y: { ticks: { font: yTickFont } },
         },
         onClick: (_, elements) => {
           if (elements.length > 0) {
@@ -530,8 +534,8 @@ export function initAnalyticsCharts() {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } },
-          y: { ticks: { font: { size: 11 } } },
+          x: { beginAtZero: true, ticks: { callback: v => formatCurrencyCompact(v) } },
+          y: { ticks: { font: yTickFont } },
         },
         onClick: (_, elements) => {
           if (elements.length > 0) {
@@ -990,5 +994,6 @@ function clearYearFilter(query, originalGrants, beneficiariosData) {
  */
 function truncateLabel(text, max) {
   if (!text) return ''
-  return text.length > max ? text.slice(0, max) + '...' : text
+  const limit = window.innerWidth < 640 ? Math.min(max, 18) : max
+  return text.length > limit ? text.slice(0, limit) + '...' : text
 }
