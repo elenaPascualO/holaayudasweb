@@ -49,6 +49,7 @@ export async function renderHomePage(params = {}) {
   }
 
   return `
+    <h1 class="text-2xl font-bold text-gray-900 mb-4">Busca ayudas y subvenciones públicas</h1>
     ${createSearchBar()}
     ${createExampleChips()}
 
