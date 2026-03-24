@@ -903,6 +903,14 @@ async function filterResultsByYear(query, year, originalGrants, beneficiariosDat
     linkEl.setAttribute('data-link', href)
   }
 
+  // Update "Ver en beneficiarios" link with year filter
+  const benefLinkEl = benefListEl?.previousElementSibling?.querySelector('a[data-link]')
+  if (benefLinkEl) {
+    const href = `/beneficiarios?q=${encodeURIComponent(query)}&anio=${year}&returnTo=${encodeURIComponent(currentReturnTo())}`
+    benefLinkEl.setAttribute('href', href)
+    benefLinkEl.setAttribute('data-link', href)
+  }
+
   // Filter convocatorias
   if (listEl) {
     listEl.innerHTML = `
@@ -955,6 +963,14 @@ function clearYearFilter(query, originalGrants, beneficiariosData) {
     const href = `/buscar?q=${encodeURIComponent(query)}&returnTo=${encodeURIComponent(currentReturnTo())}`
     linkEl.setAttribute('href', href)
     linkEl.setAttribute('data-link', href)
+  }
+
+  // Reset "Ver en beneficiarios" link (remove year filter)
+  const benefLinkEl = benefListEl?.previousElementSibling?.querySelector('a[data-link]')
+  if (benefLinkEl) {
+    const href = `/beneficiarios?q=${encodeURIComponent(query)}&returnTo=${encodeURIComponent(currentReturnTo())}`
+    benefLinkEl.setAttribute('href', href)
+    benefLinkEl.setAttribute('data-link', href)
   }
 
   if (listEl && originalGrants) {
