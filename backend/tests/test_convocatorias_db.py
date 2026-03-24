@@ -450,6 +450,17 @@ class TestRegionInSearchResults:
         assert grant_100001 is not None
         assert grant_100001["_regionLabel"] == "COMUNIDAD DE MADRID"
 
+    def test_latest_non_closed_before_closed(self, detailed_db):
+        """Latest listing should show non-closed grants before closed ones."""
+        results = get_latest_convocatorias_local(0, 20, detailed_db)
+        statuses = [g["_status"] for g in results["content"]]
+        # 100002 has fechaFinSolicitud=2023-12-31 (closed), 100001 has 2024-06-30
+        # Non-closed should appear before closed
+        closed_indices = [i for i, s in enumerate(statuses) if s == "closed"]
+        non_closed_indices = [i for i, s in enumerate(statuses) if s != "closed"]
+        if closed_indices and non_closed_indices:
+            assert max(non_closed_indices) < min(closed_indices)
+
     def test_search_includes_region_label(self, detailed_db):
         results = search_convocatorias_local(
             q="digitalización", db_path=detailed_db,

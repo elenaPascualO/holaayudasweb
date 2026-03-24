@@ -89,6 +89,8 @@ def init_convocatorias_db(db_path: str | None = None) -> None:
                 ON convocatorias(fecha_recepcion DESC);
             CREATE INDEX IF NOT EXISTS idx_conv_detail
                 ON convocatorias(detail_fetched);
+            CREATE INDEX IF NOT EXISTS idx_conv_detail_fecha
+                ON convocatorias(detail_fetched, fecha_recepcion DESC);
             CREATE INDEX IF NOT EXISTS idx_conv_finalidad
                 ON convocatorias(finalidad_id);
             CREATE INDEX IF NOT EXISTS idx_conv_abierto
@@ -983,16 +985,34 @@ def get_latest_convocatorias_local(
         total_pages = max(1, (total + page_size - 1) // page_size)
         offset = page * page_size
 
+        # Non-closed first, then closed — each group sorted by date desc.
+        # Uses UNION ALL of two indexed sub-queries to avoid a full-table
+        # sort (CASE in ORDER BY can't use an index with date('now')).
+        closed_cond = (
+            "fecha_fin_solicitud IS NOT NULL"
+            " AND fecha_fin_solicitud < date('now')"
+        )
+        cols = """numero_convocatoria, descripcion, descripcion_leng,
+                  fecha_recepcion, nivel1, nivel2, nivel3,
+                  presupuesto_total, abierto,
+                  fecha_inicio_solicitud, fecha_fin_solicitud,
+                  text_inicio, text_fin, regiones_json"""
         rows = conn.execute(
-            """SELECT numero_convocatoria, descripcion, descripcion_leng,
-                      fecha_recepcion, nivel1, nivel2, nivel3,
-                      presupuesto_total, abierto,
-                      fecha_inicio_solicitud, fecha_fin_solicitud,
-                      text_inicio, text_fin, regiones_json
-               FROM convocatorias
-               WHERE detail_fetched = 1
-               ORDER BY fecha_recepcion DESC
-               LIMIT ? OFFSET ?""",
+            f"""SELECT {cols} FROM (
+                SELECT {cols}
+                FROM (
+                    SELECT {cols} FROM convocatorias
+                    WHERE detail_fetched = 1 AND NOT ({closed_cond})
+                    ORDER BY fecha_recepcion DESC
+                )
+                UNION ALL
+                SELECT {cols}
+                FROM (
+                    SELECT {cols} FROM convocatorias
+                    WHERE detail_fetched = 1 AND ({closed_cond})
+                    ORDER BY fecha_recepcion DESC
+                )
+            ) LIMIT ? OFFSET ?""",
             (page_size, offset),
         ).fetchall()
 
