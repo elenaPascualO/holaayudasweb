@@ -78,11 +78,16 @@ def init_convocatorias_db(db_path: str | None = None) -> None:
                 text_inicio TEXT,
                 text_fin TEXT,
 
-                embedding BLOB,
-                embedding_version INTEGER DEFAULT 0,
-
                 created_at TEXT DEFAULT (datetime('now')),
                 updated_at TEXT DEFAULT (datetime('now'))
+            );
+
+            -- Separate table for embeddings (keeps main table lean for analytics)
+            CREATE TABLE IF NOT EXISTS conv_embeddings (
+                convocatoria_id INTEGER PRIMARY KEY REFERENCES convocatorias(id),
+                embedding BLOB NOT NULL,
+                version INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT (datetime('now'))
             );
 
             CREATE INDEX IF NOT EXISTS idx_conv_fecha
@@ -99,6 +104,18 @@ def init_convocatorias_db(db_path: str | None = None) -> None:
                 ON convocatorias(numero_convocatoria);
             CREATE INDEX IF NOT EXISTS idx_conv_sitemap
                 ON convocatorias(detail_fetched, fecha_fin_solicitud, fecha_recepcion);
+
+            -- Covering indexes for analytics (avoid full table scans)
+            CREATE INDEX IF NOT EXISTS idx_analytics_summary
+                ON convocatorias(presupuesto_total, fecha_fin_solicitud);
+            CREATE INDEX IF NOT EXISTS idx_analytics_year
+                ON convocatorias(fecha_recepcion, presupuesto_total);
+            CREATE INDEX IF NOT EXISTS idx_analytics_theme
+                ON convocatorias(descripcion_finalidad, finalidad_id, fecha_recepcion, presupuesto_total);
+            CREATE INDEX IF NOT EXISTS idx_analytics_organs
+                ON convocatorias(nivel2, nivel1, fecha_recepcion, presupuesto_total);
+            CREATE INDEX IF NOT EXISTS idx_analytics_region
+                ON convocatorias(regiones_json, fecha_recepcion, presupuesto_total);
 
             CREATE TABLE IF NOT EXISTS conv_sync_metadata (
                 key TEXT PRIMARY KEY,
@@ -120,11 +137,60 @@ def init_convocatorias_db(db_path: str | None = None) -> None:
                 )
             """)
 
+        # Migration: move embeddings from convocatorias to conv_embeddings
+        _migrate_embeddings_to_separate_table(conn)
+
         conn.commit()
     finally:
         conn.close()
 
     logger.info("Convocatorias DB initialized at %s", path)
+
+
+def _migrate_embeddings_to_separate_table(conn: sqlite3.Connection) -> None:
+    """Migrate embeddings from convocatorias table to conv_embeddings.
+
+    Checks if the old 'embedding' column exists in convocatorias.
+    If it has data and conv_embeddings is empty, copies in batches.
+    Then drops the old columns to reclaim space.
+
+    Args:
+        conn: Active SQLite connection (caller manages transaction).
+    """
+    # Check if old embedding column exists
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(convocatorias)").fetchall()
+    }
+    if "embedding" not in columns:
+        return  # Already migrated
+
+    # Check if there's data to migrate
+    old_count = conn.execute(
+        "SELECT COUNT(*) FROM convocatorias WHERE embedding IS NOT NULL"
+    ).fetchone()[0]
+    new_count = conn.execute("SELECT COUNT(*) FROM conv_embeddings").fetchone()[0]
+
+    if old_count > 0 and new_count == 0:
+        logger.info(
+            "Migrating %d embeddings from convocatorias to conv_embeddings...",
+            old_count,
+        )
+        conn.execute(
+            """INSERT OR IGNORE INTO conv_embeddings (convocatoria_id, embedding, version)
+               SELECT id, embedding, COALESCE(embedding_version, 1)
+               FROM convocatorias
+               WHERE embedding IS NOT NULL"""
+        )
+        migrated = conn.execute("SELECT COUNT(*) FROM conv_embeddings").fetchone()[0]
+        logger.info("Migrated %d embeddings to conv_embeddings", migrated)
+
+    # Drop old columns (SQLite >= 3.35.0)
+    try:
+        conn.execute("ALTER TABLE convocatorias DROP COLUMN embedding")
+        conn.execute("ALTER TABLE convocatorias DROP COLUMN embedding_version")
+        logger.info("Dropped embedding columns from convocatorias table")
+    except sqlite3.OperationalError as e:
+        logger.warning("Could not drop embedding columns (SQLite too old?): %s", e)
 
 
 def _build_fts_query(q: str) -> str:
@@ -322,8 +388,9 @@ def get_unembedded_ids(
     conn = _get_connection(db_path)
     try:
         rows = conn.execute(
-            """SELECT id, numero_convocatoria FROM convocatorias
-               WHERE detail_fetched = 1 AND embedding IS NULL
+            """SELECT c.id, c.numero_convocatoria FROM convocatorias c
+               LEFT JOIN conv_embeddings e ON e.convocatoria_id = c.id
+               WHERE c.detail_fetched = 1 AND e.convocatoria_id IS NULL
                LIMIT ?""",
             (limit,),
         ).fetchall()
@@ -335,23 +402,26 @@ def get_unembedded_ids(
 def store_embeddings(
     records: list[tuple[int, bytes]], db_path: str | None = None
 ) -> int:
-    """Store embedding BLOBs for convocatorias.
+    """Store embedding BLOBs in the conv_embeddings table.
 
     Args:
-        records: List of (id, embedding_blob) tuples.
+        records: List of (convocatoria_id, embedding_blob) tuples.
         db_path: Override path (useful for tests).
 
     Returns:
-        Number of rows updated.
+        Number of rows inserted/updated.
     """
     conn = _get_connection(db_path)
     updated = 0
     try:
         for conv_id, blob in records:
             cursor = conn.execute(
-                """UPDATE convocatorias SET embedding = ?, embedding_version = 1,
-                   updated_at = datetime('now') WHERE id = ?""",
-                (blob, conv_id),
+                """INSERT INTO conv_embeddings (convocatoria_id, embedding, version)
+                   VALUES (?, ?, 1)
+                   ON CONFLICT(convocatoria_id) DO UPDATE SET
+                       embedding = excluded.embedding,
+                       version = excluded.version""",
+                (conv_id, blob),
             )
             updated += cursor.rowcount
         conn.commit()
@@ -375,13 +445,14 @@ def get_backfill_stats(db_path: str | None = None) -> dict:
         row = conn.execute(
             """SELECT
                 COUNT(*) AS total,
-                SUM(CASE WHEN detail_fetched = 1 THEN 1 ELSE 0 END) AS with_detail,
-                SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS with_embedding
+                SUM(CASE WHEN detail_fetched = 1 THEN 1 ELSE 0 END) AS with_detail
             FROM convocatorias"""
         ).fetchone()
         total = row["total"]
         with_detail = row["with_detail"]
-        with_embedding = row["with_embedding"]
+        with_embedding = conn.execute(
+            "SELECT COUNT(*) FROM conv_embeddings"
+        ).fetchone()[0]
         return {
             "total_convocatorias": total,
             "with_detail": with_detail,
@@ -426,7 +497,7 @@ def get_sync_status(db_path: str | None = None) -> dict:
             "SELECT COUNT(*) FROM convocatorias WHERE detail_fetched = 1"
         ).fetchone()[0]
         with_embedding = conn.execute(
-            "SELECT COUNT(*) FROM convocatorias WHERE embedding IS NOT NULL"
+            "SELECT COUNT(*) FROM conv_embeddings"
         ).fetchone()[0]
 
         row = conn.execute(
@@ -504,13 +575,13 @@ def iter_all_embeddings(
     conn = _get_connection(db_path)
     try:
         cursor = conn.execute(
-            "SELECT id, embedding FROM convocatorias WHERE embedding IS NOT NULL ORDER BY id"
+            "SELECT convocatoria_id, embedding FROM conv_embeddings ORDER BY convocatoria_id"
         )
         while True:
             rows = cursor.fetchmany(batch_size)
             if not rows:
                 break
-            yield [(row["id"], row["embedding"]) for row in rows]
+            yield [(row["convocatoria_id"], row["embedding"]) for row in rows]
     finally:
         conn.close()
 
@@ -573,7 +644,7 @@ def get_embedding_count(db_path: str | None = None) -> int:
     conn = _get_connection(db_path)
     try:
         return conn.execute(
-            "SELECT COUNT(*) FROM convocatorias WHERE embedding IS NOT NULL"
+            "SELECT COUNT(*) FROM conv_embeddings"
         ).fetchone()[0]
     finally:
         conn.close()
@@ -876,11 +947,15 @@ def search_convocatorias_local(
             if region_ids:
                 region_conditions = []
                 for rid in region_ids:
+                    try:
+                        rid_int = int(rid)
+                    except ValueError:
+                        raise ValueError(f"Invalid region ID: {rid}")
                     region_conditions.append(
                         "EXISTS (SELECT 1 FROM json_each(c.regiones_json) "
                         "WHERE json_extract(value, '$.id') = ?)"
                     )
-                    params.append(int(rid))
+                    params.append(rid_int)
                 where_parts.append(f"({' OR '.join(region_conditions)})")
 
         # Instrumentos filter (JSON array)
@@ -889,11 +964,15 @@ def search_convocatorias_local(
             if instr_ids:
                 instr_conditions = []
                 for iid in instr_ids:
+                    try:
+                        iid_int = int(iid)
+                    except ValueError:
+                        raise ValueError(f"Invalid instrument ID: {iid}")
                     instr_conditions.append(
                         "EXISTS (SELECT 1 FROM json_each(c.instrumentos_json) "
                         "WHERE json_extract(value, '$.id') = ?)"
                     )
-                    params.append(int(iid))
+                    params.append(iid_int)
                 where_parts.append(f"({' OR '.join(instr_conditions)})")
 
         # Tipos beneficiario filter (JSON array)
@@ -902,11 +981,15 @@ def search_convocatorias_local(
             if tb_ids:
                 tb_conditions = []
                 for tid in tb_ids:
+                    try:
+                        tid_int = int(tid)
+                    except ValueError:
+                        raise ValueError(f"Invalid beneficiary type ID: {tid}")
                     tb_conditions.append(
                         "EXISTS (SELECT 1 FROM json_each(c.tipos_beneficiarios_json) "
                         "WHERE json_extract(value, '$.id') = ?)"
                     )
-                    params.append(int(tid))
+                    params.append(tid_int)
                 where_parts.append(f"({' OR '.join(tb_conditions)})")
 
         # Finalidad (direct comparison)

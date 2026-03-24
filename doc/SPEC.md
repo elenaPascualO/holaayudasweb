@@ -188,8 +188,8 @@ Campos de respuesta por item:
 | Backend Package Manager | uv |
 | Backend Cliente HTTP | httpx |
 | Backend Testing | pytest + httpx |
-| Base de datos | SQLite (FTS5 + embeddings BLOB) |
-| Embeddings | OpenAI text-embedding-3-small (1536 dims) |
+| Base de datos | SQLite (FTS5 + tabla separada para embeddings) |
+| Embeddings | OpenAI text-embedding-3-small (1536 dims), almacenados en `conv_embeddings` |
 | Vector ops | numpy (cosine similarity) |
 | Deploy | Railway |
 
@@ -278,7 +278,7 @@ mientras FAISS carga.
 - `backend/services/faiss_index.py` — Gestion del indice FAISS
 - `backend/services/semantic_search.py` — Logica de busqueda hibrida + RRF
 - `backend/services/embeddings.py` — Cliente OpenAI + conversion BLOB
-- `backend/services/convocatorias_db.py` — FTS5 + lectura de embeddings
+- `backend/services/convocatorias_db.py` — FTS5 + tabla `conv_embeddings`
 
 ---
 
@@ -413,3 +413,4 @@ BDNS_BASE_URL=https://www.infosubvenciones.es/bdnstrans/api
 | 0.3.1 | 2026-03 | Sync en background: POST /sync/convocatorias lanza tarea async y retorna inmediatamente, nuevo GET /sync/convocatorias/status para monitorizar progreso |
 | 0.3.2 | 2026-03 | Migracion local-first: busqueda, ultimas y beneficiarios servidos desde SQLite local con fallback a BDNS. Fix _row_to_search_result() para exponer nivel1/nivel2/nivel3 como campos top-level |
 | 0.3.3 | 2026-03 | Fix drill-down desde graficas de analytics: nuevos filtros `descripcionFinalidad` y `regionDesc` en `/api/convocatorias`, status chart usa `estado` en vez de `abierto` |
+| 0.3.4 | 2026-03 | Busqueda hibrida FAISS+FTS5+RRF: indice vectorial FAISS en memoria reemplaza coseno numpy. Embeddings migrados a tabla separada `conv_embeddings` para reducir I/O en queries analytics (~21s → <1s). Covering indexes para analytics |
