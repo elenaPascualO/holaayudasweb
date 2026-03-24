@@ -468,7 +468,7 @@ def search_fts(
         rows = conn.execute(
             """SELECT c.id, c.numero_convocatoria, c.descripcion, c.descripcion_leng,
                       c.fecha_recepcion, c.nivel1, c.nivel2, c.nivel3,
-                      c.presupuesto_total, c.abierto, c.embedding,
+                      c.presupuesto_total, c.abierto,
                       c.descripcion_finalidad, c.finalidad_id,
                       c.fecha_inicio_solicitud, c.fecha_fin_solicitud,
                       c.text_inicio, c.text_fin, c.regiones_json
@@ -487,34 +487,94 @@ def search_fts(
         conn.close()
 
 
-def get_recent_with_embeddings(
-    limit: int = 5000, db_path: str | None = None
-) -> list[dict]:
-    """Get recent convocatorias that have embeddings (for fallback search).
+def iter_all_embeddings(
+    batch_size: int = 10000, db_path: str | None = None
+):
+    """Yield batches of (id, embedding_blob) for FAISS index building.
+
+    Streams data to avoid loading all BLOBs into memory at once.
 
     Args:
-        limit: Max results.
+        batch_size: Number of records per batch.
         db_path: Override path (useful for tests).
 
-    Returns:
-        List of dicts with convocatoria data.
+    Yields:
+        List of (id, embedding_blob) tuples, up to batch_size each.
     """
     conn = _get_connection(db_path)
     try:
+        cursor = conn.execute(
+            "SELECT id, embedding FROM convocatorias WHERE embedding IS NOT NULL ORDER BY id"
+        )
+        while True:
+            rows = cursor.fetchmany(batch_size)
+            if not rows:
+                break
+            yield [(row["id"], row["embedding"]) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_convocatorias_by_ids(
+    ids: list[int], db_path: str | None = None
+) -> dict[int, dict]:
+    """Fetch convocatoria metadata for a list of IDs.
+
+    Uses a temp table to handle large ID lists (avoids SQLite binding limit).
+
+    Args:
+        ids: List of convocatoria primary-key IDs.
+        db_path: Override path (useful for tests).
+
+    Returns:
+        Dict mapping id -> row dict (same columns as search_fts).
+    """
+    if not ids:
+        return {}
+
+    conn = _get_connection(db_path)
+    try:
+        conn.execute("CREATE TEMP TABLE _lookup_ids (id INTEGER PRIMARY KEY)")
+
+        batch_size = 500
+        for i in range(0, len(ids), batch_size):
+            batch = ids[i : i + batch_size]
+            placeholders = ", ".join("(?)" for _ in batch)
+            conn.execute(
+                f"INSERT OR IGNORE INTO _lookup_ids VALUES {placeholders}", batch
+            )
+
         rows = conn.execute(
             """SELECT c.id, c.numero_convocatoria, c.descripcion, c.descripcion_leng,
                       c.fecha_recepcion, c.nivel1, c.nivel2, c.nivel3,
-                      c.presupuesto_total, c.abierto, c.embedding,
+                      c.presupuesto_total, c.abierto,
                       c.descripcion_finalidad, c.finalidad_id,
                       c.fecha_inicio_solicitud, c.fecha_fin_solicitud,
                       c.text_inicio, c.text_fin, c.regiones_json
                FROM convocatorias c
-               WHERE c.embedding IS NOT NULL
-               ORDER BY c.fecha_recepcion DESC
-               LIMIT ?""",
-            (limit,),
+               WHERE c.id IN (SELECT id FROM _lookup_ids)"""
         ).fetchall()
-        return [dict(row) for row in rows]
+
+        return {row["id"]: dict(row) for row in rows}
+    finally:
+        conn.execute("DROP TABLE IF EXISTS _lookup_ids")
+        conn.close()
+
+
+def get_embedding_count(db_path: str | None = None) -> int:
+    """Return count of records with non-null embeddings.
+
+    Args:
+        db_path: Override path (useful for tests).
+
+    Returns:
+        Number of embedded convocatorias.
+    """
+    conn = _get_connection(db_path)
+    try:
+        return conn.execute(
+            "SELECT COUNT(*) FROM convocatorias WHERE embedding IS NOT NULL"
+        ).fetchone()[0]
     finally:
         conn.close()
 
@@ -1219,7 +1279,7 @@ def analytics_by_region(
     limit: int = 20,
     db_path: str | None = None,
 ) -> list[dict]:
-    """Count convocatorias by region (parsed from regiones_json).
+    """Count convocatorias by region using json_each() in SQL.
 
     Args:
         year_from: Optional start year filter.
@@ -1232,51 +1292,36 @@ def analytics_by_region(
     """
     conn = _get_connection(db_path)
     try:
-        where_parts = ["regiones_json IS NOT NULL"]
+        where_parts = ["c.regiones_json IS NOT NULL"]
         params: list = []
 
         if year_from:
-            where_parts.append("fecha_recepcion >= ?")
+            where_parts.append("c.fecha_recepcion >= ?")
             params.append(f"{year_from}-01-01")
         if year_to:
-            where_parts.append("fecha_recepcion <= ?")
+            where_parts.append("c.fecha_recepcion <= ?")
             params.append(f"{year_to}-12-31")
 
         where_clause = " AND ".join(where_parts)
+        params.append(limit)
 
         rows = conn.execute(
-            f"""SELECT regiones_json, presupuesto_total
-                FROM convocatorias
-                WHERE {where_clause}""",
+            f"""SELECT
+                    json_extract(r.value, '$.descripcion') as region_name,
+                    json_extract(r.value, '$.codigo') as region_code,
+                    COUNT(*) as count,
+                    COALESCE(SUM(c.presupuesto_total), 0) as budget
+                FROM convocatorias c, json_each(c.regiones_json) r
+                WHERE {where_clause}
+                  AND region_name IS NOT NULL AND region_name != ''
+                GROUP BY region_name
+                ORDER BY count DESC
+                LIMIT ?""",
             params,
         ).fetchall()
-
-        # Aggregate in Python since regions are JSON arrays
-        region_counts: dict[str, dict] = {}
-        for row in rows:
-            try:
-                regions = json.loads(row["regiones_json"])
-            except (json.JSONDecodeError, TypeError):
-                continue
-            budget = row["presupuesto_total"] or 0
-            for region in regions:
-                if isinstance(region, dict):
-                    name = region.get("descripcion", "")
-                    code = region.get("codigo", "")
-                else:
-                    name = str(region)
-                    code = ""
-                if not name:
-                    continue
-                if name not in region_counts:
-                    region_counts[name] = {"count": 0, "budget": 0, "code": code}
-                region_counts[name]["count"] += 1
-                region_counts[name]["budget"] += budget
-
-        sorted_regions = sorted(region_counts.items(), key=lambda x: x[1]["count"], reverse=True)
         return [
-            {"label": name, "code": data["code"], "count": data["count"], "budget": data["budget"]}
-            for name, data in sorted_regions[:limit]
+            {"label": row["region_name"], "code": row["region_code"], "count": row["count"], "budget": row["budget"]}
+            for row in rows
         ]
     finally:
         conn.close()

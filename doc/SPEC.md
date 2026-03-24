@@ -223,7 +223,7 @@ El backend sirve datos desde la replica local SQLite como fuente primaria, con f
 
 | Endpoint | Fuente | Cache TTL |
 |----------|--------|-----------|
-| `GET /api/search` | SQLite FTS5 + OpenAI embeddings | - |
+| `GET /api/search` | Hibrida: FTS5 + FAISS + RRF (ver 3.4) | - |
 | `GET /api/analytics/summary` | SQLite convocatorias | 1 hora |
 | `GET /api/analytics/by-year` | SQLite convocatorias | 1 hora |
 | `GET /api/analytics/monthly-trend` | SQLite convocatorias | 1 hora |
@@ -233,6 +233,52 @@ El backend sirve datos desde la replica local SQLite como fuente primaria, con f
 | `GET /api/analytics/status` | SQLite convocatorias | 1 hora |
 | `POST /api/admin/sync/convocatorias` | BDNS → SQLite (admin, background) | - |
 | `GET /api/admin/sync/convocatorias/status` | Estado del sync en curso | - |
+| `GET /api/admin/faiss/status` | Estado del indice vectorial FAISS | - |
+
+### 3.4 Estrategia de Busqueda Hibrida (FTS5 + FAISS + RRF)
+
+La busqueda en `/api/search` combina dos sistemas complementarios fusionados con
+Reciprocal Rank Fusion (RRF):
+
+**Componentes:**
+
+1. **FTS5 (keywords):** Busqueda textual en SQLite FTS5 con tokenizacion unicode61
+   (sin acentos). Encuentra coincidencias exactas por palabras. Rapido (~5ms).
+
+2. **FAISS (semantica):** Indice vectorial en memoria (FAISS, de Meta) con embeddings
+   de OpenAI `text-embedding-3-small` (1536 dims). Busca por significado sobre todo
+   el corpus (~600K convocatorias). Usa `OPQ64,IVF{nlist},PQ64` para eficiencia de
+   memoria (~40 MB) con `nprobe=32`.
+
+3. **RRF (fusion):** Reciprocal Rank Fusion combina ambas listas rankeadas.
+   Documentos que aparecen en ambas listas suben al top.
+   Formula: `score(d) = sum(1/(k + rank))` con `k=60`.
+
+**Flujo:**
+```
+query → FTS5 (500 candidatos) ──┐
+                                ├─→ RRF fusion → filtros → top_k
+query → OpenAI embed → FAISS   ─┘
+         (500 candidatos)
+```
+
+**Fallbacks:**
+- FAISS no listo (arranque): solo FTS5
+- OpenAI falla: solo FTS5
+- FTS5 vacio + FAISS con resultados: solo FAISS
+- Ambos vacios: 0 resultados
+
+**Threshold:** Score minimo de cosine similarity = 0.25 para resultados FAISS.
+
+**Carga del indice:** Se construye en background al arrancar la app (~15-30s).
+Se refresca tras cada sync de embeddings. La busqueda funciona en modo FTS5-only
+mientras FAISS carga.
+
+**Archivos clave:**
+- `backend/services/faiss_index.py` — Gestion del indice FAISS
+- `backend/services/semantic_search.py` — Logica de busqueda hibrida + RRF
+- `backend/services/embeddings.py` — Cliente OpenAI + conversion BLOB
+- `backend/services/convocatorias_db.py` — FTS5 + lectura de embeddings
 
 ---
 

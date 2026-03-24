@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Header, Query
@@ -61,6 +62,16 @@ async def _run_sync_background(mode: str) -> None:
         from backend.routes.seo import invalidate_sitemap_cache
 
         invalidate_sitemap_cache()
+
+        # Refresh FAISS index with newly embedded vectors
+        if mode in ("daily", "backfill-embeddings") and not os.environ.get("TESTING"):
+            try:
+                import backend.services.faiss_index as faiss_index
+
+                logger.info("Refreshing FAISS index after %s sync", mode)
+                await asyncio.to_thread(faiss_index.load_index_from_db)
+            except Exception as e:
+                logger.error("Failed to refresh FAISS index: %s", e)
     except asyncio.CancelledError:
         finished = {
             "status": "cancelled",
@@ -251,3 +262,15 @@ async def get_convocatorias_backfill_stats(
     from backend.services.convocatorias_db import get_backfill_stats
 
     return await asyncio.to_thread(get_backfill_stats)
+
+
+@router.get("/faiss/status")
+async def get_faiss_status(
+    authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
+) -> dict:
+    """Return FAISS vector index status (ready, total vectors, index type)."""
+    _validate_token(authorization)
+
+    import backend.services.faiss_index as faiss_index
+
+    return faiss_index.get_stats()

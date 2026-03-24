@@ -1,9 +1,10 @@
-"""Hybrid semantic search: FTS5 pre-filter + cosine similarity re-ranking."""
+"""Hybrid search: FTS5 keyword search + FAISS vector search + RRF fusion."""
 
 import logging
 
 import numpy as np
 
+import backend.services.faiss_index as faiss_index
 from backend.services.beneficiarios_db import (
     has_data as has_beneficiarios_data,
     search_beneficiarios_trend,
@@ -11,34 +12,12 @@ from backend.services.beneficiarios_db import (
 from backend.services.convocatorias_db import (
     _row_to_search_result,
     aggregate_by_year_for_ids,
-    get_recent_with_embeddings,
+    get_convocatorias_by_ids,
     search_fts,
 )
-from backend.services.embeddings import (
-    blob_to_embedding,
-    generate_embeddings_batch,
-)
+from backend.services.embeddings import generate_embeddings_batch
 
 logger = logging.getLogger(__name__)
-
-
-def _cosine_similarity_batch(
-    query_vec: np.ndarray, candidate_vecs: np.ndarray
-) -> np.ndarray:
-    """Compute cosine similarity between a query vector and candidate vectors.
-
-    Args:
-        query_vec: 1D array (1536,).
-        candidate_vecs: 2D array (N, 1536).
-
-    Returns:
-        1D array of similarity scores (N,).
-    """
-    # Normalize
-    query_norm = query_vec / (np.linalg.norm(query_vec) + 1e-10)
-    norms = np.linalg.norm(candidate_vecs, axis=1, keepdims=True) + 1e-10
-    candidate_norms = candidate_vecs / norms
-    return candidate_norms @ query_norm
 
 
 def _passes_filters(candidate: dict, filters: dict) -> bool:
@@ -82,92 +61,135 @@ def _apply_filters(candidates: list[dict], filters: dict | None) -> list[dict]:
     return [c for c in candidates if _passes_filters(c, filters)]
 
 
+def reciprocal_rank_fusion(
+    ranked_lists: list[list[int]], k: int = 60
+) -> list[tuple[int, float]]:
+    """Combine multiple ranked lists using Reciprocal Rank Fusion.
+
+    Each document's score = sum(1 / (k + rank)) across all lists it appears in.
+    Documents appearing in multiple lists get boosted.
+
+    Args:
+        ranked_lists: List of lists, each containing doc IDs in ranked order.
+        k: Smoothing constant (default 60, from original RRF paper).
+
+    Returns:
+        List of (doc_id, rrf_score) sorted by score descending.
+    """
+    scores: dict[int, float] = {}
+    for ranked_list in ranked_lists:
+        for rank, doc_id in enumerate(ranked_list, start=1):
+            scores[doc_id] = scores.get(doc_id, 0) + 1.0 / (k + rank)
+    return sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
+
+async def _embed_query(query: str) -> np.ndarray | None:
+    """Embed a query string via OpenAI. Returns None on failure."""
+    try:
+        embeddings = await generate_embeddings_batch([query])
+        return np.array(embeddings[0], dtype=np.float32)
+    except Exception as e:
+        logger.error("Failed to embed query: %s", e)
+        return None
+
+
 async def semantic_search(
     query: str,
     filters: dict | None = None,
     top_k: int = 20,
     fts_candidates: int = 500,
+    faiss_candidates: int = 500,
+    rrf_k: int = 60,
+    similarity_threshold: float = 0.25,
 ) -> dict:
-    """Perform hybrid semantic search.
+    """Perform hybrid search using FTS5 + FAISS + RRF fusion.
 
-    1. FTS5 pre-filters candidates by text match
-    2. OpenAI embeds the query
-    3. Cosine similarity re-ranks candidates
-    4. Filters (status, year) applied AFTER ranking to preserve relevance
+    1. FTS5 retrieves keyword matches (ranked by BM25)
+    2. FAISS retrieves semantic matches from full corpus (ranked by cosine similarity)
+    3. RRF merges both ranked lists — docs in both lists rank highest
+    4. Filters (status, year) applied AFTER ranking
     5. Returns top_k results in BDNS-compatible format
 
     Args:
         query: User search text in natural language.
         filters: Optional dict with keys: abierto, yearFrom, yearTo.
         top_k: Number of results to return.
-        fts_candidates: Max candidates from FTS5 pre-filter.
+        fts_candidates: Max candidates from FTS5.
+        faiss_candidates: Max candidates from FAISS.
+        rrf_k: RRF smoothing constant (default 60).
+        similarity_threshold: Minimum cosine similarity for FAISS results.
 
     Returns:
         Paginated response in BDNS format.
     """
     if not query.strip():
-        return {
-            "content": [],
-            "totalElements": 0,
-            "totalPages": 0,
-            "number": 0,
-            "size": top_k,
-        }
+        return _empty_response(top_k)
 
-    # Step 1: FTS5 pre-filter (no status/year filters — applied after ranking)
-    candidates = search_fts(query, limit=fts_candidates)
+    # Step 1: FTS5 keyword search
+    fts_results = search_fts(query, limit=fts_candidates)
+    fts_ranked_ids = [r["id"] for r in fts_results]
+    fts_by_id = {r["id"]: r for r in fts_results}
 
-    # Step 2: If too few FTS results, fall back to recent embeddings
-    if len(candidates) < top_k:
-        logger.info(
-            "FTS returned %d candidates (< %d), adding recent embeddings",
-            len(candidates), top_k,
-        )
-        recent = get_recent_with_embeddings(limit=5000)
+    # Step 2: FAISS vector search (if index is ready)
+    faiss_ranked_ids: list[int] = []
+    if faiss_index.is_ready():
+        query_vec = await _embed_query(query)
+        if query_vec is not None:
+            faiss_hits = faiss_index.search(query_vec, k=faiss_candidates)
+            faiss_ranked_ids = [
+                doc_id for doc_id, score in faiss_hits
+                if score >= similarity_threshold
+            ]
 
-        # Merge: FTS candidates first, then recent (dedup by id)
-        seen_ids = {c["id"] for c in candidates}
-        for r in recent:
-            if r["id"] not in seen_ids:
-                candidates.append(r)
-                seen_ids.add(r["id"])
+    # Step 3: RRF fusion
+    ranked_lists = []
+    if fts_ranked_ids:
+        ranked_lists.append(fts_ranked_ids)
+    if faiss_ranked_ids:
+        ranked_lists.append(faiss_ranked_ids)
 
-    # Filter to only candidates with embeddings
-    candidates_with_emb = [c for c in candidates if c.get("embedding")]
+    if not ranked_lists:
+        return _empty_response(top_k)
 
-    if not candidates_with_emb:
-        # No embeddings available — return FTS results as-is, filtered by date
-        logger.info("No embeddings available, returning FTS results by date")
-        results = _apply_filters(candidates, filters)[:top_k]
-        return _build_response(results, top_k)
+    fused = reciprocal_rank_fusion(ranked_lists, k=rrf_k)
 
-    # Step 3: Embed the query
-    try:
-        query_embeddings = await generate_embeddings_batch([query])
-        query_vec = np.array(query_embeddings[0], dtype=np.float32)
-    except Exception as e:
-        logger.error("Failed to embed query: %s", e)
-        # Fallback: return FTS results by date, filtered
-        results = _apply_filters(candidates, filters)[:top_k]
-        return _build_response(results, top_k)
+    # Step 4: Hydrate metadata for all results
+    # FAISS-only results need metadata from SQLite
+    faiss_only_ids = [
+        doc_id for doc_id, _ in fused
+        if doc_id not in fts_by_id
+    ]
+    if faiss_only_ids:
+        extra = get_convocatorias_by_ids(faiss_only_ids)
+        fts_by_id.update(extra)
 
-    # Step 4: Compute cosine similarity
-    candidate_vecs = np.array(
-        [blob_to_embedding(c["embedding"]) for c in candidates_with_emb],
-        dtype=np.float32,
-    )
-    scores = _cosine_similarity_batch(query_vec, candidate_vecs)
+    # Step 5: Build result list with RRF scores
+    scored_results: list[tuple[dict, float]] = []
+    for doc_id, rrf_score in fused:
+        candidate = fts_by_id.get(doc_id)
+        if candidate is None:
+            continue
+        scored_results.append((candidate, rrf_score))
 
-    # Step 5: Sort by score
-    scored = list(zip(candidates_with_emb, scores.tolist()))
-    scored.sort(key=lambda x: x[1], reverse=True)
-
-    # Step 6: Apply filters AFTER ranking to preserve semantic relevance
+    # Step 6: Apply filters AFTER ranking
     if filters:
-        scored = [(c, s) for c, s in scored if _passes_filters(c, filters)]
-    top_results = scored[:top_k]
+        scored_results = [
+            (c, s) for c, s in scored_results if _passes_filters(c, filters)
+        ]
 
+    top_results = scored_results[:top_k]
     return _build_scored_response(top_results, top_k)
+
+
+def _empty_response(top_k: int) -> dict:
+    """Return an empty BDNS-compatible response."""
+    return {
+        "content": [],
+        "totalElements": 0,
+        "totalPages": 0,
+        "number": 0,
+        "size": top_k,
+    }
 
 
 def _build_response(candidates: list[dict], top_k: int) -> dict:
@@ -221,17 +243,18 @@ async def keyword_trend(
     query: str,
     similarity_threshold: float = 0.3,
     fts_limit: int = 5000,
+    faiss_limit: int = 5000,
 ) -> dict:
     """Aggregate matching convocatorias by year for trend analysis.
 
-    Hybrid pipeline (FTS5 + embeddings) similar to semantic_search(),
-    but collects ALL matching IDs and aggregates by year instead of
-    returning paginated results.
+    Hybrid pipeline: FTS5 keyword matches + FAISS semantic matches,
+    unioned, then aggregated by year.
 
     Args:
         query: User search text.
-        similarity_threshold: Min cosine similarity for embedding matches.
-        fts_limit: Max candidates from FTS5 pre-filter.
+        similarity_threshold: Min cosine similarity for FAISS matches.
+        fts_limit: Max candidates from FTS5.
+        faiss_limit: Max candidates from FAISS.
 
     Returns:
         Dict with query, total_matches, by_year: [{year, count, budget}].
@@ -244,49 +267,28 @@ async def keyword_trend(
             "beneficiarios": None,
         }
 
-    # Step 1: FTS5 pre-filter with high limit
+    # Step 1: FTS5 keyword matches
     fts_candidates = search_fts(query, limit=fts_limit)
     fts_ids = {c["id"] for c in fts_candidates}
 
-    # Step 2: Supplement with recent embeddings if few FTS hits
-    all_candidates = list(fts_candidates)
-    if len(fts_candidates) < fts_limit:
-        recent = get_recent_with_embeddings(limit=fts_limit)
-        seen_ids = set(fts_ids)
-        for r in recent:
-            if r["id"] not in seen_ids:
-                all_candidates.append(r)
-                seen_ids.add(r["id"])
+    # Step 2: FAISS semantic matches (if ready)
+    faiss_ids: set[int] = set()
+    if faiss_index.is_ready():
+        query_vec = await _embed_query(query)
+        if query_vec is not None:
+            faiss_hits = faiss_index.search(query_vec, k=faiss_limit)
+            faiss_ids = {
+                doc_id for doc_id, score in faiss_hits
+                if score >= similarity_threshold
+            }
 
-    # Step 3: Embed query and compute cosine similarity
-    embedding_ids: set[int] = set()
-    candidates_with_emb = [c for c in all_candidates if c.get("embedding")]
+    # Step 3: Union of both sources
+    matched_ids = list(fts_ids | faiss_ids)
 
-    if candidates_with_emb:
-        try:
-            query_embeddings = await generate_embeddings_batch([query])
-            query_vec = np.array(query_embeddings[0], dtype=np.float32)
-
-            candidate_vecs = np.array(
-                [blob_to_embedding(c["embedding"]) for c in candidates_with_emb],
-                dtype=np.float32,
-            )
-            scores = _cosine_similarity_batch(query_vec, candidate_vecs)
-
-            for candidate, score in zip(candidates_with_emb, scores.tolist()):
-                if score >= similarity_threshold:
-                    embedding_ids.add(candidate["id"])
-        except Exception as e:
-            logger.error("Keyword trend embedding failed: %s", e)
-            # Fall through — use FTS IDs only
-
-    # Step 4: Union of FTS matches + embedding matches
-    matched_ids = list(fts_ids | embedding_ids)
-
-    # Step 5: Aggregate convocatorias by year
+    # Step 4: Aggregate by year
     by_year = aggregate_by_year_for_ids(matched_ids) if matched_ids else []
 
-    # Step 6: Search beneficiarios
+    # Step 5: Search beneficiarios
     beneficiarios_result = None
     try:
         if has_beneficiarios_data():

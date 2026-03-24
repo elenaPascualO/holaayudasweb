@@ -1,6 +1,8 @@
 """Hola Ayudas API - Proxy for BDNS grants API."""
 
+import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -44,7 +46,32 @@ async def lifespan(app: FastAPI):
     init_db()
     init_convocatorias_db()
     load_index_template(frontend_dist)
+
+    # Load FAISS index in background (search works FTS-only until ready)
+    # Skip in test environments to avoid loading 6GB+ of embeddings
+    faiss_load_task = None
+    if not os.environ.get("TESTING"):
+        try:
+            from backend.services.faiss_index import load_index_from_db
+        except ImportError:
+            from services.faiss_index import load_index_from_db
+
+        async def _load_faiss():
+            try:
+                await asyncio.to_thread(load_index_from_db)
+            except Exception as e:
+                logging.getLogger(__name__).error("FAISS index load failed: %s", e)
+
+        faiss_load_task = asyncio.create_task(_load_faiss())
+
     yield
+
+    if faiss_load_task and not faiss_load_task.done():
+        faiss_load_task.cancel()
+        try:
+            await faiss_load_task
+        except asyncio.CancelledError:
+            pass
     cancel_sync_task()
     await close_client()
 

@@ -3,6 +3,7 @@
 import struct
 from unittest.mock import AsyncMock, patch
 
+import numpy as np
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -112,16 +113,14 @@ class TestAggregateByYearForIds:
 
 
 class TestKeywordTrend:
-    """Tests for keyword_trend() with mocked OpenAI."""
+    """Tests for keyword_trend() with mocked FAISS + FTS."""
 
     @pytest.mark.asyncio
     async def test_returns_trend_data(self, db_path):
-        mock_embedding = [0.9, 0.1, 0.0] + [0.0] * 1533
-
         with patch("backend.services.semantic_search.search_fts") as mock_fts, \
-             patch("backend.services.semantic_search.get_recent_with_embeddings") as mock_recent, \
-             patch("backend.services.semantic_search.aggregate_by_year_for_ids") as mock_agg, \
-             patch("backend.services.semantic_search.generate_embeddings_batch", new_callable=AsyncMock) as mock_embed:
+             patch("backend.services.semantic_search.faiss_index") as mock_faiss, \
+             patch("backend.services.semantic_search._embed_query", new_callable=AsyncMock) as mock_embed, \
+             patch("backend.services.semantic_search.aggregate_by_year_for_ids") as mock_agg:
 
             mock_fts.return_value = [
                 {
@@ -130,26 +129,15 @@ class TestKeywordTrend:
                     "fecha_recepcion": "2023-05-10",
                     "nivel1": "ESTADO", "nivel2": "MIN", "nivel3": None,
                     "presupuesto_total": 1000000.0, "abierto": 1,
-                    "embedding": _make_blob([0.9, 0.1, 0.0]),
                     "descripcion_leng": None, "descripcion_finalidad": None,
                     "finalidad_id": None, "fecha_inicio_solicitud": None,
                     "fecha_fin_solicitud": None, "text_inicio": None, "text_fin": None,
                 },
             ]
-            mock_recent.return_value = [
-                {
-                    "id": 2, "numero_convocatoria": "K002",
-                    "descripcion": "Subvenciones agricultura",
-                    "fecha_recepcion": "2024-03-15",
-                    "nivel1": "NAVARRA", "nivel2": "GOB", "nivel3": None,
-                    "presupuesto_total": 2000000.0, "abierto": 1,
-                    "embedding": _make_blob([0.85, 0.15, 0.0]),
-                    "descripcion_leng": None, "descripcion_finalidad": None,
-                    "finalidad_id": None, "fecha_inicio_solicitud": None,
-                    "fecha_fin_solicitud": None, "text_inicio": None, "text_fin": None,
-                },
-            ]
-            mock_embed.return_value = [mock_embedding]
+            mock_faiss.is_ready.return_value = True
+            mock_embed.return_value = np.array([0.9, 0.1, 0.0] + [0.0] * 1533, dtype=np.float32)
+            mock_faiss.search.return_value = [(1, 0.9), (2, 0.85)]
+
             mock_agg.return_value = [
                 {"year": "2023", "count": 1, "budget": 1000000.0},
                 {"year": "2024", "count": 1, "budget": 2000000.0},
@@ -158,7 +146,7 @@ class TestKeywordTrend:
             result = await keyword_trend("agricultura")
 
         assert result["query"] == "agricultura"
-        assert result["total_matches"] == 2
+        assert result["total_matches"] == 2  # FTS(1) ∪ FAISS(1,2) = {1,2}
         assert len(result["by_year"]) == 2
         mock_agg.assert_called_once()
 
@@ -169,11 +157,10 @@ class TestKeywordTrend:
         assert result["by_year"] == []
 
     @pytest.mark.asyncio
-    async def test_fallback_on_embedding_error(self, db_path):
+    async def test_fts_only_when_faiss_not_ready(self, db_path):
         with patch("backend.services.semantic_search.search_fts") as mock_fts, \
-             patch("backend.services.semantic_search.get_recent_with_embeddings") as mock_recent, \
-             patch("backend.services.semantic_search.aggregate_by_year_for_ids") as mock_agg, \
-             patch("backend.services.semantic_search.generate_embeddings_batch", new_callable=AsyncMock) as mock_embed:
+             patch("backend.services.semantic_search.faiss_index") as mock_faiss, \
+             patch("backend.services.semantic_search.aggregate_by_year_for_ids") as mock_agg:
 
             mock_fts.return_value = [
                 {
@@ -181,14 +168,39 @@ class TestKeywordTrend:
                     "descripcion": "Test", "fecha_recepcion": "2024-01-01",
                     "nivel1": "ESTADO", "nivel2": "MIN", "nivel3": None,
                     "presupuesto_total": 100.0, "abierto": 1,
-                    "embedding": _make_blob([1.0, 0.0, 0.0]),
                     "descripcion_leng": None, "descripcion_finalidad": None,
                     "finalidad_id": None, "fecha_inicio_solicitud": None,
                     "fecha_fin_solicitud": None, "text_inicio": None, "text_fin": None,
                 },
             ]
-            mock_recent.return_value = []
-            mock_embed.side_effect = ValueError("No API key")
+            mock_faiss.is_ready.return_value = False
+            mock_agg.return_value = [{"year": "2024", "count": 1, "budget": 100.0}]
+
+            result = await keyword_trend("test")
+
+        assert result["total_matches"] == 1
+        assert len(result["by_year"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_fallback_on_embedding_error(self, db_path):
+        with patch("backend.services.semantic_search.search_fts") as mock_fts, \
+             patch("backend.services.semantic_search.faiss_index") as mock_faiss, \
+             patch("backend.services.semantic_search._embed_query", new_callable=AsyncMock) as mock_embed, \
+             patch("backend.services.semantic_search.aggregate_by_year_for_ids") as mock_agg:
+
+            mock_fts.return_value = [
+                {
+                    "id": 1, "numero_convocatoria": "K001",
+                    "descripcion": "Test", "fecha_recepcion": "2024-01-01",
+                    "nivel1": "ESTADO", "nivel2": "MIN", "nivel3": None,
+                    "presupuesto_total": 100.0, "abierto": 1,
+                    "descripcion_leng": None, "descripcion_finalidad": None,
+                    "finalidad_id": None, "fecha_inicio_solicitud": None,
+                    "fecha_fin_solicitud": None, "text_inicio": None, "text_fin": None,
+                },
+            ]
+            mock_faiss.is_ready.return_value = True
+            mock_embed.return_value = None  # Embedding failed
             mock_agg.return_value = [{"year": "2024", "count": 1, "budget": 100.0}]
 
             result = await keyword_trend("test")
