@@ -205,7 +205,7 @@ export async function renderSearchPage(params) {
  * @param {number} pageSize - Results per page
  * @returns {Object} Filtered and paginated results in same format
  */
-function applySemanticFilters(rawResults, filters, page, pageSize) {
+export function applySemanticFilters(rawResults, filters, page, pageSize) {
   if (!rawResults.content) return rawResults
 
   let filtered = rawResults.content
@@ -225,6 +225,14 @@ function applySemanticFilters(rawResults, filters, page, pageSize) {
   if (filters.yearTo) {
     filtered = filtered.filter(r => (r.fechaRecepcion || '') <= `${filters.yearTo}-12-31`)
   }
+
+  // Sort: non-closed first, then closed, each group chronologically descending
+  filtered.sort((a, b) => {
+    const aClosed = a._status === 'closed' ? 1 : 0
+    const bClosed = b._status === 'closed' ? 1 : 0
+    if (aClosed !== bClosed) return aClosed - bClosed
+    return (b.fechaRecepcion || '').localeCompare(a.fechaRecepcion || '')
+  })
 
   const totalPages = Math.ceil(filtered.length / pageSize) || 1
   const safePage = Math.min(page, totalPages - 1)

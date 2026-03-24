@@ -7,6 +7,7 @@ import pytest
 
 from backend.services.convocatorias_db import (
     _build_fts_query,
+    _row_to_search_result,
     analytics_by_year,
     analytics_monthly_trend,
     analytics_status,
@@ -14,11 +15,13 @@ from backend.services.convocatorias_db import (
     analytics_top_organs,
     get_convocatoria_detail_local,
     get_embedding_text,
+    get_latest_convocatorias_local,
     get_sync_status,
     get_unfetched_detail_ids,
     get_unembedded_ids,
     init_convocatorias_db,
     rebuild_fts,
+    search_convocatorias_local,
     search_fts,
     store_embeddings,
     update_convocatoria_detail,
@@ -369,3 +372,164 @@ class TestAnalytics:
         data = analytics_summary(detailed_db)
         assert data["total"] == 3
         assert data["total_budget"] > 0
+
+
+class TestRowToSearchResultRegion:
+    """Tests for _row_to_search_result() region label extraction."""
+
+    def _make_row(self, regiones_json=None):
+        """Create a minimal dict mimicking a SQLite Row."""
+        return {
+            "numero_convocatoria": "100001",
+            "descripcion": "Test grant",
+            "descripcion_leng": None,
+            "fecha_recepcion": "2024-03-15",
+            "nivel1": "ESTADO",
+            "nivel2": "MINISTERIO",
+            "nivel3": None,
+            "presupuesto_total": 1000,
+            "abierto": True,
+            "fecha_inicio_solicitud": "2024-04-01",
+            "fecha_fin_solicitud": "2026-12-31",
+            "text_inicio": None,
+            "text_fin": None,
+            "regiones_json": regiones_json,
+        }
+
+    def test_single_region(self):
+        row = self._make_row(json.dumps([{"id": 1, "descripcion": "COMUNIDAD DE MADRID"}]))
+        result = _row_to_search_result(row)
+        assert result["_regionLabel"] == "COMUNIDAD DE MADRID"
+
+    def test_multiple_regions_returns_first(self):
+        row = self._make_row(json.dumps([
+            {"id": 1, "descripcion": "CATALUÑA"},
+            {"id": 2, "descripcion": "ARAGON"},
+        ]))
+        result = _row_to_search_result(row)
+        assert result["_regionLabel"] == "CATALUÑA"
+
+    def test_null_regiones(self):
+        row = self._make_row(None)
+        result = _row_to_search_result(row)
+        assert result["_regionLabel"] is None
+
+    def test_empty_array(self):
+        row = self._make_row(json.dumps([]))
+        result = _row_to_search_result(row)
+        assert result["_regionLabel"] is None
+
+    def test_no_regiones_json_key(self):
+        """Row without regiones_json column (e.g. older query)."""
+        row = {
+            "numero_convocatoria": "100001",
+            "descripcion": "Test",
+            "fecha_recepcion": "2024-03-15",
+            "nivel1": "ESTADO",
+            "nivel2": "MINISTERIO",
+            "nivel3": None,
+            "presupuesto_total": 1000,
+            "abierto": True,
+            "fecha_inicio_solicitud": "2024-04-01",
+            "fecha_fin_solicitud": "2026-12-31",
+        }
+        result = _row_to_search_result(row)
+        assert result["_regionLabel"] is None
+
+
+class TestRegionInSearchResults:
+    """Tests that region label appears in search and latest results."""
+
+    def test_latest_includes_region_label(self, detailed_db):
+        results = get_latest_convocatorias_local(0, 20, detailed_db)
+        # 100001 has region COMUNIDAD DE MADRID
+        grant_100001 = next(
+            (g for g in results["content"] if g["numeroConvocatoria"] == "100001"),
+            None,
+        )
+        assert grant_100001 is not None
+        assert grant_100001["_regionLabel"] == "COMUNIDAD DE MADRID"
+
+    def test_search_includes_region_label(self, detailed_db):
+        results = search_convocatorias_local(
+            q="digitalización", db_path=detailed_db,
+        )
+        assert len(results["content"]) >= 1
+        grant = results["content"][0]
+        assert "_regionLabel" in grant
+
+
+class TestSearchSortNonClosedFirst:
+    """Tests that text search sorts non-closed grants before closed ones."""
+
+    @pytest.fixture
+    def mixed_status_db(self, db_path):
+        """DB with grants that have mixed open/closed status."""
+        records = [
+            {
+                "numeroConvocatoria": "200001",
+                "descripcion": "Ayudas para innovación tecnológica abierta",
+                "fechaRecepcion": "2024-06-01",
+                "organo": {"nivel1": "ESTADO", "nivel2": "MIN CIENCIA"},
+            },
+            {
+                "numeroConvocatoria": "200002",
+                "descripcion": "Ayudas para innovación tecnológica cerrada antigua",
+                "fechaRecepcion": "2024-07-01",
+                "organo": {"nivel1": "ESTADO", "nivel2": "MIN INDUSTRIA"},
+            },
+            {
+                "numeroConvocatoria": "200003",
+                "descripcion": "Ayudas para innovación tecnológica abierta reciente",
+                "fechaRecepcion": "2024-08-01",
+                "organo": {"nivel1": "ESTADO", "nivel2": "MIN ECONOMIA"},
+            },
+        ]
+        upsert_convocatorias_list(records, db_path)
+
+        # 200001: open (far future end date)
+        update_convocatoria_detail("200001", {
+            "presupuestoTotal": 100,
+            "abierto": True,
+            "fechaFinSolicitud": "31/12/2030",
+        }, db_path)
+
+        # 200002: closed (past end date)
+        update_convocatoria_detail("200002", {
+            "presupuestoTotal": 200,
+            "abierto": False,
+            "fechaFinSolicitud": "01/01/2020",
+        }, db_path)
+
+        # 200003: open (far future end date)
+        update_convocatoria_detail("200003", {
+            "presupuestoTotal": 300,
+            "abierto": True,
+            "fechaFinSolicitud": "31/12/2030",
+        }, db_path)
+
+        rebuild_fts(db_path)
+        return db_path
+
+    def test_non_closed_before_closed_with_text_search(self, mixed_status_db):
+        results = search_convocatorias_local(
+            q="innovación", db_path=mixed_status_db,
+        )
+        codes = [g["numeroConvocatoria"] for g in results["content"]]
+        assert len(codes) == 3
+
+        # Non-closed grants (200003, 200001) should come before closed (200002)
+        # Within non-closed: sorted by date desc → 200003 (Aug) before 200001 (Jun)
+        idx_200001 = codes.index("200001")
+        idx_200002 = codes.index("200002")
+        idx_200003 = codes.index("200003")
+        assert idx_200003 < idx_200002, "Open grant 200003 should appear before closed 200002"
+        assert idx_200001 < idx_200002, "Open grant 200001 should appear before closed 200002"
+        assert idx_200003 < idx_200001, "More recent open grant 200003 should appear before 200001"
+
+    def test_no_text_search_keeps_chronological_order(self, mixed_status_db):
+        """Without text search, normal chronological order is preserved."""
+        results = search_convocatorias_local(db_path=mixed_status_db)
+        codes = [g["numeroConvocatoria"] for g in results["content"]]
+        # Pure date desc: 200003 (Aug), 200002 (Jul), 200001 (Jun)
+        assert codes == ["200003", "200002", "200001"]

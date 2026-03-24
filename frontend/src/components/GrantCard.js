@@ -44,6 +44,7 @@ export function createGrantCard(grant) {
             <span class="font-mono bg-gray-50 px-1.5 py-0.5 rounded">
               BDNS ${code}
             </span>
+            ${grant._regionLabel ? `<span class="font-mono bg-gray-50 px-1.5 py-0.5 rounded">${escapeHtml(grant._regionLabel)}</span>` : ''}
           </div>
         </div>
         <div class="shrink-0 flex flex-col items-end justify-between">

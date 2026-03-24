@@ -72,4 +72,33 @@ describe('createGrantCard', () => {
     const html = createGrantCard(baseGrant)
     expect(html).toContain('data-link="/ayuda/812345"')
   })
+
+  it('renders region label when _regionLabel is present', () => {
+    const grant = { ...baseGrant, _regionLabel: 'COMUNIDAD DE MADRID' }
+    const html = createGrantCard(grant)
+    expect(html).toContain('COMUNIDAD DE MADRID')
+    // Should be in a span with same styling as BDNS code
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, 'text/html')
+    const spans = doc.querySelectorAll('.font-mono.bg-gray-50')
+    const regionSpan = Array.from(spans).find(s => s.textContent.includes('COMUNIDAD DE MADRID'))
+    expect(regionSpan).not.toBeNull()
+  })
+
+  it('does not render region label when _regionLabel is absent', () => {
+    const html = createGrantCard(baseGrant)
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, 'text/html')
+    const spans = doc.querySelectorAll('.font-mono.bg-gray-50')
+    // Only the BDNS code span
+    expect(spans.length).toBe(1)
+    expect(spans[0].textContent).toContain('BDNS')
+  })
+
+  it('escapes HTML in region label', () => {
+    const grant = { ...baseGrant, _regionLabel: '<img src=x onerror=alert(1)>' }
+    const html = createGrantCard(grant)
+    expect(html).not.toContain('<img')
+    expect(html).toContain('&lt;img')
+  })
 })
