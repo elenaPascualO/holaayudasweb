@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from backend.services.bdns_client import (
@@ -19,6 +19,7 @@ from backend.services.convocatorias_db import (
     has_convocatorias_data,
     search_convocatorias_local_async,
 )
+from backend.services.rate_limiter import get_client_ip, search_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,8 @@ _VIEWABLE_TYPES = {
 
 @router.get("/convocatorias")
 async def search_grants(
-    q: str = Query(default="", description="Search text"),
+    request: Request,
+    q: str = Query(default="", max_length=500, description="Search text"),
     page: int = Query(default=0, ge=0, description="Page number (0-indexed)"),
     pageSize: int = Query(default=20, ge=1, le=50, description="Results per page"),
     fechaDesde: str | None = Query(default=None, description="Start date (YYYY-MM-DD)"),
@@ -73,6 +75,7 @@ async def search_grants(
     ),
 ) -> dict:
     """Search grants with filters. Uses local SQLite first, falls back to BDNS."""
+    search_limiter.check(get_client_ip(request))
     # Try local SQLite first
     if has_convocatorias_data():
         try:
@@ -92,6 +95,8 @@ async def search_grants(
                 descripcion_finalidad=descripcionFinalidad,
                 region_desc=regionDesc,
             )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception:
             logger.warning("Local search failed, falling back to BDNS proxy")
 

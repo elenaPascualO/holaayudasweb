@@ -1,13 +1,15 @@
 """Admin routes — protected operations triggered by cron or manual calls."""
 
 import asyncio
+import hmac
 import logging
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Header, Query
+from fastapi import APIRouter, HTTPException, Header, Query, Request
 
 from backend.config import ADMIN_SECRET
+from backend.services.rate_limiter import admin_limiter, get_client_ip
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -30,7 +32,7 @@ def _validate_token(authorization: str) -> None:
         logger.error("ADMIN_SECRET is not set — rejecting admin request")
         raise HTTPException(status_code=401, detail="Unauthorized")
     expected = f"Bearer {ADMIN_SECRET}"
-    if authorization != expected:
+    if not hmac.compare_digest(authorization, expected):
         logger.warning("Invalid admin token received (length=%d)", len(authorization))
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -133,6 +135,7 @@ async def _run_beneficiarios_sync_background() -> None:
 
 @router.post("/sync/beneficiarios")
 async def trigger_sync(
+    request: Request,
     authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
 ) -> dict:
     """Trigger beneficiarios sync in background and return immediately.
@@ -142,6 +145,7 @@ async def trigger_sync(
     """
     global _beneficiarios_sync_state, _beneficiarios_sync_task
 
+    admin_limiter.check(get_client_ip(request))
     logger.info("Received beneficiarios sync request")
     _validate_token(authorization)
 
@@ -182,6 +186,7 @@ async def get_beneficiarios_stats(
 
 @router.post("/sync/convocatorias")
 async def trigger_convocatorias_sync(
+    request: Request,
     authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
     mode: str = Query(
         default="daily",
@@ -200,6 +205,7 @@ async def trigger_convocatorias_sync(
     """
     global _sync_state, _sync_task
 
+    admin_limiter.check(get_client_ip(request))
     logger.info("Received convocatorias sync request: mode=%s", mode)
     _validate_token(authorization)
 

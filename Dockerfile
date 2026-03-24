@@ -10,7 +10,7 @@ COPY frontend/ .
 RUN bun run build
 
 # Stage 2: Python backend
-FROM python:3.13-slim
+FROM python:3.13-slim@sha256:739e7213785e88c0f702dcdc12c0973afcbd606dbf021a589cab77d6b00b579d
 
 # System deps (curl for Coolify health checks)
 RUN apt-get update && apt-get install -y --no-install-recommends \

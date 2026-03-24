@@ -7,13 +7,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 try:
     from backend.config import DISCORD_WEBHOOK_URL
+    from backend.services.rate_limiter import feedback_limiter, get_client_ip
 except ImportError:
     from config import DISCORD_WEBHOOK_URL
+    from services.rate_limiter import feedback_limiter, get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -21,28 +23,12 @@ router = APIRouter(prefix="/api", tags=["feedback"])
 
 FEEDBACK_FILE = Path(__file__).parent.parent / "feedback.jsonl"
 
-# Simple in-memory rate limit: max 5 submissions per IP per hour
-_rate_limit: dict[str, list[float]] = {}
-RATE_LIMIT_MAX = 5
-RATE_LIMIT_WINDOW = 3600  # seconds
-
 
 class FeedbackRequest(BaseModel):
     """Feedback submission payload."""
 
     email: str = Field(default="", max_length=254)
     message: str = Field(min_length=1, max_length=2000)
-
-
-def _check_rate_limit(client_ip: str) -> None:
-    """Raise 429 if client has exceeded the submission limit."""
-    now = time.time()
-    timestamps = _rate_limit.get(client_ip, [])
-    timestamps = [t for t in timestamps if now - t < RATE_LIMIT_WINDOW]
-    if len(timestamps) >= RATE_LIMIT_MAX:
-        raise HTTPException(status_code=429, detail="Too many submissions. Try again later.")
-    timestamps.append(now)
-    _rate_limit[client_ip] = timestamps
 
 
 async def _send_discord_notification(email: str | None, message: str) -> None:
@@ -77,7 +63,7 @@ async def _send_discord_notification(email: str | None, message: str) -> None:
 @router.post("/feedback", status_code=201)
 async def submit_feedback(body: FeedbackRequest, request: Request) -> dict[str, str]:
     """Save a feedback message and send Discord notification."""
-    _check_rate_limit(request.client.host if request.client else "unknown")
+    feedback_limiter.check(get_client_ip(request))
 
     email = body.email.strip() or None
     message = body.message.strip()

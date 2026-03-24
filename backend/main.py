@@ -14,8 +14,9 @@ logging.basicConfig(
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 try:
     # Production: running from root with 'backend.main:app'
@@ -85,6 +86,39 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+logger = logging.getLogger(__name__)
+
+
+# Security headers + error handling middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses and catch unhandled exceptions in production."""
+
+    async def dispatch(self, request: Request, call_next):
+        try:
+            response = await call_next(request)
+        except Exception:
+            if IS_PRODUCTION:
+                logger.exception(
+                    "Unhandled exception on %s %s", request.method, request.url.path
+                )
+                response = JSONResponse(
+                    status_code=500, content={"detail": "Internal server error"}
+                )
+            else:
+                raise
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if IS_PRODUCTION:
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=63072000; includeSubDomains; preload"
+            )
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -93,6 +127,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
+
 
 # Register API routes
 app.include_router(convocatorias_router)
