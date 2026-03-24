@@ -73,3 +73,6 @@ DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL", "")
 
 # Secret token for admin endpoints (sync cron, etc.)
 ADMIN_SECRET: str = os.getenv("ADMIN_SECRET", "")
+
+# Public base URL for sitemap and SEO canonical links
+SITE_BASE_URL: str = os.getenv("SITE_BASE_URL", "https://www.holaayudas.com")

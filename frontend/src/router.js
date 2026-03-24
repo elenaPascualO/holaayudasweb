@@ -9,6 +9,7 @@
 
 const routes = []
 let currentHandler = null
+let notFoundHandler = null
 
 /**
  * Register a route with a pattern and handler.
@@ -24,6 +25,14 @@ export function registerRoute(pattern, handler) {
   })
   const regex = new RegExp(`^${regexStr}$`)
   routes.push({ pattern, regex, paramNames, handler })
+}
+
+/**
+ * Register a handler for unmatched routes (404).
+ * @param {Function} handler - Function(pathname) to render the 404 page
+ */
+export function registerNotFound(handler) {
+  notFoundHandler = handler
 }
 
 /**
@@ -72,8 +81,10 @@ function handleRoute(pathname, queryParams = {}) {
     const params = { ...match.params, ...queryParams }
     currentHandler = match.handler
     match.handler(params)
+  } else if (notFoundHandler) {
+    currentHandler = notFoundHandler
+    notFoundHandler(pathname)
   } else {
-    // Fallback: navigate to home
     navigate('/')
   }
 }

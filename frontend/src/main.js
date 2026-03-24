@@ -5,7 +5,7 @@
  */
 
 import './style.css'
-import { initRouter, registerRoute, navigate } from './router.js'
+import { initRouter, registerRoute, registerNotFound, navigate } from './router.js'
 import { createHeader } from './components/Header.js'
 import { createLoadingSpinner } from './components/LoadingSpinner.js'
 import { renderHomePage } from './pages/home.js'
@@ -21,7 +21,7 @@ import { createStatusBadge } from './components/StatusBadge.js'
 import { formatCurrency } from './utils/formatters.js'
 import { createConcessionList } from './components/ConcessionCard.js'
 import { track, events } from './utils/tracking.js'
-import { updateMetaTags, buildBreadcrumbSchema, buildGrantSchema } from './utils/seo.js'
+import { updateMetaTags, updatePaginationLinks, buildBreadcrumbSchema, buildGrantSchema, buildWebSiteSchema, buildOrganizationSchema } from './utils/seo.js'
 
 const app = document.querySelector('#app')
 
@@ -32,9 +32,16 @@ const app = document.querySelector('#app')
 function render(pageHtml) {
   app.innerHTML =
     createHeader() +
-    `<main class="max-w-5xl mx-auto px-4 py-6">${pageHtml}</main>` +
+    `<main class="max-w-5xl mx-auto px-4 py-6" tabindex="-1">${pageHtml}</main>` +
     createFooter()
   setupEventListeners()
+
+  // Move focus to main content after SPA navigation (a11y + CWV)
+  const main = app.querySelector('main')
+  if (main) {
+    main.focus({ preventScroll: true })
+    window.scrollTo(0, 0)
+  }
 }
 
 /**
@@ -682,6 +689,25 @@ function handleClearFilters() {
 }
 
 /**
+ * Read pagination state from DOM and set rel="next"/rel="prev" link tags.
+ * @param {string} basePath - Route path without page param (e.g. "/buscar")
+ */
+function updatePaginationFromDOM(basePath) {
+  const nav = document.querySelector('[data-pagination-page]')
+  if (!nav) return
+
+  const currentPage = parseInt(nav.dataset.paginationPage, 10)
+  const totalPages = parseInt(nav.dataset.paginationTotal, 10)
+  if (isNaN(currentPage) || isNaN(totalPages)) return
+
+  // Rebuild baseUrl from current query params minus "page"
+  const params = new URLSearchParams(window.location.search)
+  params.delete('page')
+  const baseUrl = params.toString() ? `${basePath}?${params}` : basePath
+  updatePaginationLinks({ currentPage, totalPages, baseUrl })
+}
+
+/**
  * Enrich visible grant cards with detail data (status badge + budget).
  * Fetches details in parallel with limited concurrency.
  */
@@ -731,7 +757,10 @@ registerRoute('/', async (params) => {
   renderLoading()
   const html = await renderHomePage(params)
   render(html)
-  updateMetaTags({ path: '/' })
+  updateMetaTags({
+    path: '/',
+    jsonLd: [buildWebSiteSchema(), buildOrganizationSchema()],
+  })
   enrichVisibleCards()
 })
 
@@ -747,6 +776,7 @@ registerRoute('/buscar', async (params) => {
       : 'Busca ayudas y subvenciones publicas en España. Filtra por tipo, region, fecha y mas.',
     path: '/buscar',
   })
+  updatePaginationFromDOM('/buscar')
   enrichVisibleCards()
 })
 
@@ -754,11 +784,22 @@ registerRoute('/beneficiarios', async (params) => {
   renderLoading()
   const html = await renderTransparenciaPage(params)
   render(html)
-  updateMetaTags({
-    title: 'Beneficiarios - Mayores receptores de subvenciones',
-    description: 'Ranking de los mayores beneficiarios de subvenciones publicas en España. Consulta quien recibe mas fondos publicos.',
-    path: '/beneficiarios',
-  })
+  const anio = params.anio && params.anio !== 'todos' ? params.anio : null
+  const q = params.q || null
+  let title = 'Beneficiarios - Mayores receptores de subvenciones'
+  let description = 'Ranking de los mayores beneficiarios de subvenciones publicas en España. Consulta quien recibe mas fondos publicos.'
+  if (anio && q) {
+    title = `Beneficiarios "${q}" en ${anio}`
+    description = `Busqueda de beneficiarios "${q}" en el ranking de subvenciones publicas del año ${anio}.`
+  } else if (anio) {
+    title = `Top Beneficiarios ${anio} - Mayores receptores de subvenciones`
+    description = `Ranking de los mayores beneficiarios de subvenciones publicas en España en ${anio}.`
+  } else if (q) {
+    title = `Beneficiarios "${q}" - Busqueda en ranking de subvenciones`
+    description = `Resultados de busqueda "${q}" en el ranking de beneficiarios de subvenciones publicas.`
+  }
+  updateMetaTags({ title, description, path: '/beneficiarios' })
+  updatePaginationFromDOM('/beneficiarios')
   track(events.BENEFICIARIOS_VIEW, { anio: params.anio || '' })
 })
 
@@ -829,6 +870,34 @@ registerRoute('/contacto', () => {
     title: 'Contacto',
     description: 'Contacta con el equipo de Hola Ayudas. Sugerencias, errores o colaboraciones.',
     path: '/contacto',
+  })
+})
+
+// --- 404 handler ---
+registerNotFound((pathname) => {
+  render(`
+    <div class="text-center py-16">
+      <h1 class="text-6xl font-bold text-gray-200 mb-4">404</h1>
+      <p class="text-lg text-gray-500 mb-2">Pagina no encontrada</p>
+      <p class="text-sm text-gray-400 mb-8">
+        La direccion <code class="bg-gray-100 px-2 py-0.5 rounded text-gray-600">${pathname}</code> no existe.
+      </p>
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+        <a href="/" data-link
+           class="px-5 py-2.5 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 transition-colors no-underline">
+          Ir al inicio
+        </a>
+        <a href="/buscar" data-link
+           class="px-5 py-2.5 border border-primary text-primary font-medium rounded-lg hover:bg-primary/5 transition-colors no-underline">
+          Buscar ayudas
+        </a>
+      </div>
+    </div>
+  `)
+  updateMetaTags({
+    title: 'Pagina no encontrada',
+    description: 'La pagina que buscas no existe. Busca ayudas y subvenciones publicas en Hola Ayudas.',
+    path: pathname,
   })
 })
 

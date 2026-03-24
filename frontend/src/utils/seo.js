@@ -5,7 +5,7 @@
 const BASE_URL = 'https://www.holaayudas.com'
 const SITE_NAME = 'Hola Ayudas'
 const DEFAULT_DESCRIPTION = 'Busca ayudas y subvenciones publicas en España de forma facil y rapida. Gratis y sin registro.'
-const DEFAULT_IMAGE = `${BASE_URL}/og-image.jpg`
+const DEFAULT_IMAGE = `${BASE_URL}/og-image.png`
 
 /**
  * Set or create a <meta> tag.
@@ -113,6 +113,75 @@ export function buildGrantSchema(grant) {
 }
 
 /**
+ * Build WebSite + SearchAction schema for the homepage.
+ * Enables Google sitelinks search box.
+ * @returns {Object} JSON-LD WebSite
+ */
+export function buildWebSiteSchema() {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    'name': SITE_NAME,
+    'url': BASE_URL,
+    'description': DEFAULT_DESCRIPTION,
+    'potentialAction': {
+      '@type': 'SearchAction',
+      'target': `${BASE_URL}/buscar?q={search_term_string}`,
+      'query-input': 'required name=search_term_string',
+    },
+  }
+}
+
+/**
+ * Build Organization schema for the homepage.
+ * @returns {Object} JSON-LD Organization
+ */
+export function buildOrganizationSchema() {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    'name': 'HolaDatos',
+    'url': BASE_URL,
+    'logo': `${BASE_URL}/favicon.svg`,
+    'description': 'Datos publicos accesibles para todos. Hola Ayudas es un proyecto de HolaDatos.',
+  }
+}
+
+/**
+ * Set rel="next" and rel="prev" link tags for paginated pages.
+ * Removes stale pagination links from previous pages.
+ * @param {Object} opts
+ * @param {number} opts.currentPage - Current page (0-indexed)
+ * @param {number} opts.totalPages - Total number of pages
+ * @param {string} opts.baseUrl - Base URL without page param (e.g. "/buscar?q=test")
+ */
+export function updatePaginationLinks({ currentPage, totalPages, baseUrl }) {
+  // Remove existing pagination links
+  document.querySelectorAll('link[rel="prev"][data-seo-pag], link[rel="next"][data-seo-pag]')
+    .forEach(el => el.remove())
+
+  if (totalPages <= 1) return
+
+  const sep = baseUrl.includes('?') ? '&' : '?'
+
+  if (currentPage > 0) {
+    const link = document.createElement('link')
+    link.rel = 'prev'
+    link.href = `${BASE_URL}${baseUrl}${sep}page=${currentPage - 1}`
+    link.dataset.seoPag = '1'
+    document.head.appendChild(link)
+  }
+
+  if (currentPage < totalPages - 1) {
+    const link = document.createElement('link')
+    link.rel = 'next'
+    link.href = `${BASE_URL}${baseUrl}${sep}page=${currentPage + 1}`
+    link.dataset.seoPag = '1'
+    document.head.appendChild(link)
+  }
+}
+
+/**
  * Update all SEO meta tags for the current page.
  * @param {Object} opts
  * @param {string} [opts.title] - Page title
@@ -148,6 +217,10 @@ export function updateMetaTags({ title, description, path, image, jsonLd } = {})
   setMeta('name', 'twitter:title', fullTitle)
   setMeta('name', 'twitter:description', desc)
   setMeta('name', 'twitter:image', img)
+
+  // Clean up pagination links from previous page (set fresh ones via updatePaginationLinks)
+  document.querySelectorAll('link[rel="prev"][data-seo-pag], link[rel="next"][data-seo-pag]')
+    .forEach(el => el.remove())
 
   // JSON-LD
   if (jsonLd) {

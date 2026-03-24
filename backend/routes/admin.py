@@ -56,6 +56,11 @@ async def _run_sync_background(mode: str) -> None:
         _sync_state = finished
         _last_result_by_mode[mode] = finished
         logger.info("Background sync completed: mode=%s result=%s", mode, result)
+
+        # Invalidate sitemap caches so next crawl sees fresh data
+        from backend.routes.seo import invalidate_sitemap_cache
+
+        invalidate_sitemap_cache()
     except asyncio.CancelledError:
         finished = {
             "status": "cancelled",

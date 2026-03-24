@@ -24,7 +24,8 @@ export function createPagination(currentPage, totalPages, totalElements, baseUrl
   const nextUrl = nextDisabled ? '#' : `${baseUrl}${sep}page=${currentPage + 1}`
 
   return `
-    <nav class="flex items-center justify-between mt-6 pt-4 border-t border-gray-100" aria-label="Paginacion">
+    <nav class="flex items-center justify-between mt-6 pt-4 border-t border-gray-100"
+         aria-label="Paginacion" data-pagination-page="${currentPage}" data-pagination-total="${totalPages}">
       <button
         ${prevDisabled ? 'disabled' : `data-link="${prevUrl}"`}
         class="flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-lg

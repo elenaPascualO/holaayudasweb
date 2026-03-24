@@ -95,6 +95,8 @@ def init_convocatorias_db(db_path: str | None = None) -> None:
                 ON convocatorias(abierto);
             CREATE INDEX IF NOT EXISTS idx_conv_numero
                 ON convocatorias(numero_convocatoria);
+            CREATE INDEX IF NOT EXISTS idx_conv_sitemap
+                ON convocatorias(detail_fetched, fecha_fin_solicitud, fecha_recepcion);
 
             CREATE TABLE IF NOT EXISTS conv_sync_metadata (
                 key TEXT PRIMARY KEY,
@@ -467,7 +469,7 @@ def search_fts(
                       c.presupuesto_total, c.abierto, c.embedding,
                       c.descripcion_finalidad, c.finalidad_id,
                       c.fecha_inicio_solicitud, c.fecha_fin_solicitud,
-                      c.text_inicio, c.text_fin
+                      c.text_inicio, c.text_fin, c.regiones_json
                FROM convocatorias c
                WHERE c.id IN (
                    SELECT rowid FROM convocatorias_fts
@@ -503,7 +505,7 @@ def get_recent_with_embeddings(
                       c.presupuesto_total, c.abierto, c.embedding,
                       c.descripcion_finalidad, c.finalidad_id,
                       c.fecha_inicio_solicitud, c.fecha_fin_solicitud,
-                      c.text_inicio, c.text_fin
+                      c.text_inicio, c.text_fin, c.regiones_json
                FROM convocatorias c
                WHERE c.embedding IS NOT NULL
                ORDER BY c.fecha_recepcion DESC
@@ -657,6 +659,24 @@ def _row_to_search_result(row: sqlite3.Row) -> dict:
 
     status = _compute_status(abierto, inicio_str or text_inicio, fin_str or text_fin)
 
+    # Extract first region label from regiones_json if available
+    region_label = None
+    keys = row.keys()
+    regiones_raw = row["regiones_json"] if "regiones_json" in keys else None
+    if regiones_raw:
+        try:
+            regiones_list = json.loads(regiones_raw)
+            if regiones_list and isinstance(regiones_list, list):
+                names = [
+                    r.get("descripcion", "") if isinstance(r, dict) else str(r)
+                    for r in regiones_list
+                ]
+                names = [n for n in names if n]
+                if names:
+                    region_label = names[0]
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     return {
         "numeroConvocatoria": row["numero_convocatoria"],
         "descripcion": row["descripcion"],
@@ -674,6 +694,7 @@ def _row_to_search_result(row: sqlite3.Row) -> dict:
         },
         "_presupuestoTotal": row["presupuesto_total"],
         "_status": status,
+        "_regionLabel": region_label,
     }
 
 
@@ -869,9 +890,16 @@ def search_convocatorias_local(
 
         total_pages = max(1, (total + page_size - 1) // page_size)
 
-        # Sort
+        # Sort: when text search is active, show non-closed first
         order_dir = "ASC" if orden == "asc" else "DESC"
-        order_clause = f"c.fecha_recepcion {order_dir}"
+        if q and q.strip():
+            order_clause = (
+                "CASE WHEN c.fecha_fin_solicitud IS NOT NULL"
+                f" AND c.fecha_fin_solicitud < date('now') THEN 1 ELSE 0 END,"
+                f" c.fecha_recepcion {order_dir}"
+            )
+        else:
+            order_clause = f"c.fecha_recepcion {order_dir}"
 
         # Fetch page
         offset = page * page_size
@@ -880,7 +908,7 @@ def search_convocatorias_local(
                    c.fecha_recepcion, c.nivel1, c.nivel2, c.nivel3,
                    c.presupuesto_total, c.abierto,
                    c.fecha_inicio_solicitud, c.fecha_fin_solicitud,
-                   c.text_inicio, c.text_fin
+                   c.text_inicio, c.text_fin, c.regiones_json
             FROM convocatorias c
             WHERE {where_clause}
             ORDER BY {order_clause}
@@ -960,7 +988,7 @@ def get_latest_convocatorias_local(
                       fecha_recepcion, nivel1, nivel2, nivel3,
                       presupuesto_total, abierto,
                       fecha_inicio_solicitud, fecha_fin_solicitud,
-                      text_inicio, text_fin
+                      text_inicio, text_fin, regiones_json
                FROM convocatorias
                WHERE detail_fetched = 1
                ORDER BY fecha_recepcion DESC
@@ -1402,16 +1430,10 @@ def aggregate_by_year_for_ids(
         conn.close()
 
 
-def get_sitemap_total_count(db_path: str | None = None) -> int:
-    """Count open convocatorias for sitemap generation.
+def get_sitemap_open_count(db_path: str | None = None) -> int:
+    """Count open convocatorias for sitemap (not closed).
 
     Open = fecha_fin_solicitud IS NULL OR fecha_fin_solicitud >= date('now').
-
-    Args:
-        db_path: Override path (useful for tests).
-
-    Returns:
-        Total count of open convocatorias.
     """
     conn = _get_connection(db_path)
     try:
@@ -1425,24 +1447,35 @@ def get_sitemap_total_count(db_path: str | None = None) -> int:
         conn.close()
 
 
-def get_sitemap_entries_page(
+def get_sitemap_open_max_updated(db_path: str | None = None) -> str | None:
+    """Get MAX(updated_at) for open grants (used as lastmod in sitemap index)."""
+    conn = _get_connection(db_path)
+    try:
+        row = conn.execute(
+            """SELECT MAX(updated_at) FROM convocatorias
+               WHERE detail_fetched = 1
+               AND (fecha_fin_solicitud IS NULL OR fecha_fin_solicitud >= date('now'))"""
+        ).fetchone()
+        return row[0]
+    finally:
+        conn.close()
+
+
+def get_sitemap_open_entries(
     page: int, page_size: int = 50000, db_path: str | None = None
 ) -> list[dict]:
-    """Get a page of open convocatorias for sitemap generation.
+    """Get a page of open convocatorias for sitemap.
 
     Args:
         page: Page number (0-indexed).
         page_size: Entries per sitemap file (max 50000 per sitemaps.org spec).
-        db_path: Override path (useful for tests).
-
-    Returns:
-        List of dicts with numero_convocatoria and fecha_recepcion.
     """
     conn = _get_connection(db_path)
     try:
         offset = page * page_size
         rows = conn.execute(
-            """SELECT numero_convocatoria, fecha_recepcion
+            """SELECT numero_convocatoria,
+                      COALESCE(updated_at, fecha_recepcion) AS lastmod
                FROM convocatorias
                WHERE detail_fetched = 1
                AND (fecha_fin_solicitud IS NULL OR fecha_fin_solicitud >= date('now'))
@@ -1451,7 +1484,76 @@ def get_sitemap_entries_page(
             (page_size, offset),
         ).fetchall()
         return [
-            {"numero": row["numero_convocatoria"], "fecha": row["fecha_recepcion"]}
+            {"numero": row["numero_convocatoria"], "lastmod": row["lastmod"]}
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+def get_sitemap_closed_by_year(db_path: str | None = None) -> list[dict]:
+    """Count closed grants grouped by year, with max updated_at per year.
+
+    Returns:
+        List of dicts: [{"year": "2026", "count": 80000, "last_modified": "2026-03-..."}]
+    """
+    conn = _get_connection(db_path)
+    try:
+        rows = conn.execute(
+            """SELECT substr(fecha_recepcion, 1, 4) AS year,
+                      COUNT(*) AS count,
+                      MAX(updated_at) AS last_modified
+               FROM convocatorias
+               WHERE detail_fetched = 1
+               AND fecha_fin_solicitud IS NOT NULL
+               AND fecha_fin_solicitud < date('now')
+               AND fecha_recepcion IS NOT NULL
+               GROUP BY year
+               ORDER BY year DESC"""
+        ).fetchall()
+        return [
+            {
+                "year": row["year"],
+                "count": row["count"],
+                "last_modified": row["last_modified"],
+            }
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+def get_sitemap_closed_entries(
+    year: str, page: int, page_size: int = 50000, db_path: str | None = None
+) -> list[dict]:
+    """Get a page of closed convocatorias for a specific year.
+
+    Uses date range filter (index-friendly) instead of substr.
+
+    Args:
+        year: 4-digit year string (e.g. "2025").
+        page: Page number (0-indexed).
+        page_size: Entries per sitemap file.
+    """
+    conn = _get_connection(db_path)
+    try:
+        offset = page * page_size
+        year_start = f"{year}-01-01"
+        year_end = f"{int(year) + 1}-01-01"
+        rows = conn.execute(
+            """SELECT numero_convocatoria,
+                      COALESCE(updated_at, fecha_recepcion) AS lastmod
+               FROM convocatorias
+               WHERE detail_fetched = 1
+               AND fecha_fin_solicitud IS NOT NULL
+               AND fecha_fin_solicitud < date('now')
+               AND fecha_recepcion >= ? AND fecha_recepcion < ?
+               ORDER BY fecha_recepcion DESC
+               LIMIT ? OFFSET ?""",
+            (year_start, year_end, page_size, offset),
+        ).fetchall()
+        return [
+            {"numero": row["numero_convocatoria"], "lastmod": row["lastmod"]}
             for row in rows
         ]
     finally:
