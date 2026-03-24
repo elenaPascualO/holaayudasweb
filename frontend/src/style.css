@@ -15,8 +15,8 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Hide focus outline on main when focused programmatically (SPA navigation) */
-main:focus:not(:focus-visible) {
+/* Hide focus outline on main (focused programmatically for SPA navigation a11y) */
+main:focus {
   outline: none;
 }
 
