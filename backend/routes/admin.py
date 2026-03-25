@@ -60,10 +60,12 @@ async def _run_sync_background(mode: str) -> None:
         _last_result_by_mode[mode] = finished
         logger.info("Background sync completed: mode=%s result=%s", mode, result)
 
-        # Invalidate sitemap caches so next crawl sees fresh data
+        # Invalidate caches so next request sees fresh data
         from backend.routes.seo import invalidate_sitemap_cache
+        from backend.services.convocatorias_db import invalidate_has_data_cache
 
         invalidate_sitemap_cache()
+        invalidate_has_data_cache()
 
         # Refresh FAISS index with newly embedded vectors
         if mode in ("daily", "backfill-embeddings") and not os.environ.get("TESTING"):

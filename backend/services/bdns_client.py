@@ -459,7 +459,8 @@ async def search_convocatorias_enriched(
     """Search grants and enrich with detail data, filtering by status.
 
     Fetches grant details in parallel to determine status, then filters
-    results by the requested status group.
+    results by the requested status group.  Uses a global timeout to
+    avoid blocking the response for too long when BDNS is slow.
 
     Args:
         params: Search parameters (same as search_convocatorias).
@@ -470,8 +471,8 @@ async def search_convocatorias_enriched(
     """
     desired_page_size = int(params.get("pageSize", 20))
     enriched_results: list[dict[str, Any]] = []
-    semaphore = asyncio.Semaphore(5)
-    max_extra_pages = 3
+    semaphore = asyncio.Semaphore(10)
+    max_extra_pages = 2
     current_page = int(params.get("page", 0))
     total_elements_original = 0
 
@@ -492,8 +493,10 @@ async def search_convocatorias_enriched(
                 return item
             async with semaphore:
                 try:
-                    detail = await get_convocatoria_detail(code)
-                except BDNSError:
+                    detail = await asyncio.wait_for(
+                        get_convocatoria_detail(code), timeout=5.0
+                    )
+                except (BDNSError, asyncio.TimeoutError):
                     return item
             status = get_grant_status(detail)
             enriched = {**item, "_status": status}

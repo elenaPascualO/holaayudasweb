@@ -1,6 +1,7 @@
 """Grant (convocatoria) routes."""
 
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -76,10 +77,11 @@ async def search_grants(
 ) -> dict:
     """Search grants with filters. Uses local SQLite first, falls back to BDNS."""
     search_limiter.check(get_client_ip(request))
+    t0 = time.monotonic()
     # Try local SQLite first
     if has_convocatorias_data():
         try:
-            return await search_convocatorias_local_async(
+            result = await search_convocatorias_local_async(
                 q=q,
                 page=page,
                 page_size=pageSize,
@@ -95,6 +97,13 @@ async def search_grants(
                 descripcion_finalidad=descripcionFinalidad,
                 region_desc=regionDesc,
             )
+            elapsed = time.monotonic() - t0
+            if elapsed > 0.5:
+                logger.warning(
+                    "Slow local search: %.2fs (q=%r, estado=%s, desde=%s, hasta=%s)",
+                    elapsed, q, estado, fechaDesde, fechaHasta,
+                )
+            return result
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception:

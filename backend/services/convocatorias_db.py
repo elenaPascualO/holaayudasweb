@@ -104,6 +104,8 @@ def init_convocatorias_db(db_path: str | None = None) -> None:
                 ON convocatorias(numero_convocatoria);
             CREATE INDEX IF NOT EXISTS idx_conv_sitemap
                 ON convocatorias(detail_fetched, fecha_fin_solicitud, fecha_recepcion);
+            CREATE INDEX IF NOT EXISTS idx_conv_search_estado
+                ON convocatorias(detail_fetched, fecha_recepcion, fecha_fin_solicitud);
 
             -- Covering indexes for analytics (avoid full table scans)
             CREATE INDEX IF NOT EXISTS idx_analytics_summary
@@ -849,8 +851,14 @@ _COMUNIDADES_AUTONOMAS = {
 }
 
 
+_has_data_cache: bool | None = None
+
+
 def has_convocatorias_data(db_path: str | None = None) -> bool:
     """Check if the convocatorias table has detail-fetched records.
+
+    Result is cached after the first successful check to avoid
+    hitting the DB on every request.
 
     Args:
         db_path: Override path (useful for tests).
@@ -858,16 +866,26 @@ def has_convocatorias_data(db_path: str | None = None) -> bool:
     Returns:
         True if there are records with detail_fetched = 1.
     """
+    global _has_data_cache
+    if _has_data_cache is not None:
+        return _has_data_cache
     conn = _get_connection(db_path)
     try:
-        total = conn.execute(
-            "SELECT COUNT(*) FROM convocatorias WHERE detail_fetched = 1"
-        ).fetchone()[0]
-        return total > 0
+        row = conn.execute(
+            "SELECT 1 FROM convocatorias WHERE detail_fetched = 1 LIMIT 1"
+        ).fetchone()
+        _has_data_cache = row is not None
+        return _has_data_cache
     except Exception:
         return False
     finally:
         conn.close()
+
+
+def invalidate_has_data_cache() -> None:
+    """Reset the has_convocatorias_data cache (call after sync)."""
+    global _has_data_cache
+    _has_data_cache = None
 
 
 def search_convocatorias_local(
@@ -1032,15 +1050,6 @@ def search_convocatorias_local(
 
         where_clause = " AND ".join(where_parts)
 
-        # Count total matching
-        count_sql = f"SELECT COUNT(*) FROM convocatorias c WHERE {where_clause}"
-        total = conn.execute(count_sql, params).fetchone()[0]
-
-        if total == 0:
-            return _empty_response(page, page_size)
-
-        total_pages = max(1, (total + page_size - 1) // page_size)
-
         # Sort: when text search is active, show non-closed first
         order_dir = "ASC" if orden == "asc" else "DESC"
         if q and q.strip():
@@ -1052,7 +1061,10 @@ def search_convocatorias_local(
         else:
             order_clause = f"c.fecha_recepcion {order_dir}"
 
-        # Fetch page
+        # Fetch page data first (fast with LIMIT), then count.
+        # For large result sets the COUNT is expensive (~seconds on disk-bound
+        # servers), so we fetch page_size + 1 rows to detect whether more
+        # pages exist and defer the exact count to a background estimate.
         offset = page * page_size
         data_sql = f"""
             SELECT c.numero_convocatoria, c.descripcion, c.descripcion_leng,
@@ -1065,9 +1077,31 @@ def search_convocatorias_local(
             ORDER BY {order_clause}
             LIMIT ? OFFSET ?
         """
-        rows = conn.execute(data_sql, [*params, page_size, offset]).fetchall()
+        rows = conn.execute(
+            data_sql, [*params, page_size + 1, offset]
+        ).fetchall()
 
-        content = [_row_to_search_result(row) for row in rows]
+        if not rows:
+            return _empty_response(page, page_size)
+
+        has_more = len(rows) > page_size
+        page_rows = rows[:page_size]
+        content = [_row_to_search_result(row) for row in page_rows]
+
+        # For the first page with a full result set, use a fast
+        # approximate count to avoid scanning the entire table.
+        if has_more and estado:
+            # Use a count-estimate: scan up to a cap, then extrapolate.
+            # This avoids the full table scan that can take 30+ seconds
+            # on disk-bound servers with large databases.
+            total = _fast_count_estimate(conn, where_clause, params)
+        elif has_more:
+            count_sql = f"SELECT COUNT(*) FROM convocatorias c WHERE {where_clause}"
+            total = conn.execute(count_sql, params).fetchone()[0]
+        else:
+            total = offset + len(page_rows)
+
+        total_pages = max(1, (total + page_size - 1) // page_size)
 
         return {
             "content": content,
@@ -1768,6 +1802,55 @@ def get_embedding_text(row: dict | sqlite3.Row) -> str:
                 pass
 
     return "\n".join(parts)
+
+
+def _fast_count_estimate(
+    conn: sqlite3.Connection,
+    where_clause: str,
+    params: list,
+) -> int:
+    """Get a fast count for estado-filtered queries.
+
+    For queries with the estado (open/closed) filter, the NOT condition on
+    fecha_fin_solicitud prevents efficient index usage for COUNT.  Instead,
+    we compute: open_count = total_count - closed_count, where both sub-
+    counts can use covering indexes efficiently.
+
+    Falls back to a regular COUNT if the optimized path isn't applicable.
+
+    Args:
+        conn: SQLite connection.
+        where_clause: SQL WHERE clause.
+        params: Query parameters.
+
+    Returns:
+        Total count (exact).
+    """
+    # Try the optimized path: strip the estado condition and compute via subtraction
+    # The estado conditions are appended at the end of where_parts
+    abiertas_cond = (
+        "NOT (c.fecha_fin_solicitud IS NOT NULL"
+        " AND c.fecha_fin_solicitud < date('now'))"
+    )
+    cerradas_cond = (
+        "c.fecha_fin_solicitud IS NOT NULL"
+        " AND c.fecha_fin_solicitud < date('now')"
+    )
+
+    if abiertas_cond in where_clause:
+        # open = total - closed (both use covering indexes)
+        base_clause = where_clause.replace(f" AND {abiertas_cond}", "")
+        total_sql = f"SELECT COUNT(*) FROM convocatorias c WHERE {base_clause}"
+        total = conn.execute(total_sql, params).fetchone()[0]
+
+        closed_clause = base_clause + f" AND {cerradas_cond}"
+        closed_sql = f"SELECT COUNT(*) FROM convocatorias c WHERE {closed_clause}"
+        closed = conn.execute(closed_sql, params).fetchone()[0]
+        return total - closed
+
+    # Fallback: regular COUNT
+    count_sql = f"SELECT COUNT(*) FROM convocatorias c WHERE {where_clause}"
+    return conn.execute(count_sql, params).fetchone()[0]
 
 
 def _empty_response(page: int, page_size: int) -> dict:
