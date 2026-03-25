@@ -3,7 +3,7 @@
 ## 1. Resumen
 
 **Nombre del producto:** Hola Ayudas
-**Version:** 0.3.3 (Fase 3 - Replica Local + Semantica + Analytics + Local-First)
+**Version:** 0.4.0 (Fase 3 + Generacion automatica de posts RRSS)
 **Proposito:** Interfaz web moderna y user-friendly para buscar ayudas y subvenciones publicas españolas a traves de la API publica de BDNS.
 
 ### 1.1 Vision
@@ -223,7 +223,7 @@ El backend sirve datos desde la replica local SQLite como fuente primaria, con f
 
 | Endpoint | Fuente | Cache TTL |
 |----------|--------|-----------|
-| `GET /api/search` | Hibrida: FTS5 + FAISS + RRF (ver 3.4) | - |
+| `GET /api/search` | Hibrida: FTS5 + FAISS + RRF (ver 3.5) | - |
 | `GET /api/analytics/summary` | SQLite convocatorias | 1 hora |
 | `GET /api/analytics/by-year` | SQLite convocatorias | 1 hora |
 | `GET /api/analytics/monthly-trend` | SQLite convocatorias | 1 hora |
@@ -234,8 +234,73 @@ El backend sirve datos desde la replica local SQLite como fuente primaria, con f
 | `POST /api/admin/sync/convocatorias` | BDNS → SQLite (admin, background) | - |
 | `GET /api/admin/sync/convocatorias/status` | Estado del sync en curso | - |
 | `GET /api/admin/faiss/status` | Estado del indice vectorial FAISS | - |
+| `GET /api/admin/posts` | Lista posts generados para RRSS (filtros: status, post_type) | - |
+| `GET /api/admin/posts/:id` | Detalle de un post generado | - |
+| `PATCH /api/admin/posts/:id` | Cambiar status de post (published/discarded) | - |
+| `DELETE /api/admin/posts/:id` | Eliminar post generado | - |
+| `POST /api/admin/posts/generate` | Generar post RRSS en background (6 tipos) | - |
+| `GET /api/admin/posts/generate/status` | Estado de la generacion en curso | - |
 
-### 3.4 Estrategia de Busqueda Hibrida (FTS5 + FAISS + RRF)
+### 3.4 Generacion de Posts para RRSS
+
+Sistema semi-automatico que genera borradores de posts para X y LinkedIn a partir de la base de datos local de convocatorias, usando OpenAI (gpt-4o-mini) para el copywriting.
+
+**Flujo:** Query DB → construir prompt → OpenAI genera dos versiones (X + LinkedIn) → guardar como draft → revisar manualmente → publicar.
+
+#### Tipos de post
+
+| Tipo | Param API | Descripcion | Query principal |
+|------|-----------|-------------|-----------------|
+| Ayuda destacada | `ayuda_destacada` | Destaca 1 ayuda abierta con alto presupuesto | Top por `presupuesto_total` DESC, abierta, no usada en posts anteriores |
+| Datos de la semana | `datos_semana` | Resumen semanal de estadisticas | Count nuevas (7 dias), sum presupuesto, top region, top tema, total abiertas |
+| Cierre inminente | `cierre_inminente` | Ayudas que cierran en los proximos 7 dias | `fecha_fin_solicitud` entre hoy y +7 dias, excluye fechas genericas `%-12-31` |
+| Tematico | `tematico` | Agrupado por finalidad (ej: "5 ayudas para autonomos") | Finalidad con mas grants abiertas, no usada en los ultimos 30 dias |
+| Top organismo | `top_organismo` | Que ministerio/CCAA publico mas ayudas esta semana | GROUP BY `nivel2` ultimos 7 dias, incluye ejemplos de convocatorias |
+| Dato curioso | `dato_curioso` | Dato sorprendente de los datos historicos | Pool de 7 queries (record presupuesto, ano record, region top, etc.), rota para no repetir |
+
+#### Formato de salida
+
+Cada post se genera en dos versiones adaptadas a la plataforma:
+
+| Plataforma | Longitud | Tono | Formato |
+|------------|----------|------|---------|
+| X | 300-600 chars | Informal, directo | 2-3 hashtags, enlace a holaayudas.com |
+| LinkedIn | 800-1500 chars | Profesional, contexto | Estructura con saltos de linea, 3-5 hashtags |
+
+#### Uso via API
+
+```bash
+# Generar post (auto-selecciona tipo segun rotacion)
+POST /api/admin/posts/generate?post_type=auto
+
+# Generar tipo especifico
+POST /api/admin/posts/generate?post_type=ayuda_destacada
+
+# Ver drafts pendientes
+GET /api/admin/posts?status=draft
+
+# Marcar como publicado
+PATCH /api/admin/posts/1  {"status": "published"}
+
+# Descartar
+PATCH /api/admin/posts/1  {"status": "discarded"}
+```
+
+Todos los endpoints requieren `Authorization: Bearer $ADMIN_SECRET`.
+
+#### Uso via CLI
+
+```bash
+uv run python -m backend.scripts.generate_posts              # auto
+uv run python -m backend.scripts.generate_posts ayuda_destacada
+uv run python -m backend.scripts.generate_posts dato_curioso
+```
+
+#### Auto-rotacion (`post_type=auto`)
+
+Prioridad: `cierre_inminente` (si hay grants cerrando) → `datos_semana` (lun-mie) → `top_organismo` → `ayuda_destacada` → `dato_curioso` → `tematico`. Evita repetir tipos generados en los ultimos 7 dias.
+
+### 3.5 Estrategia de Busqueda Hibrida (FTS5 + FAISS + RRF)
 
 La busqueda en `/api/search` combina dos sistemas complementarios fusionados con
 Reciprocal Rank Fusion (RRF):
@@ -323,7 +388,8 @@ mientras FAISS carga.
 | `ALLOWED_ORIGINS` | `http://localhost:5174` | Origenes CORS |
 | `ENVIRONMENT` | `development` | `development` o `production` |
 | `CONVOCATORIAS_DB_PATH` | `data/convocatorias.db` | Ruta a la BD SQLite de convocatorias |
-| `OPENAI_API_KEY` | _(vacio)_ | API key de OpenAI para embeddings |
+| `OPENAI_API_KEY` | _(vacio)_ | API key de OpenAI para embeddings y generacion de posts |
+| `POSTS_OPENAI_MODEL` | `gpt-4o-mini` | Modelo OpenAI para generacion de posts RRSS |
 | `DISCORD_WEBHOOK_URL` | _(vacio)_ | Webhook de Discord para notificaciones de feedback |
 
 ### 5.2 Configuracion CORS
@@ -414,3 +480,4 @@ BDNS_BASE_URL=https://www.infosubvenciones.es/bdnstrans/api
 | 0.3.2 | 2026-03 | Migracion local-first: busqueda, ultimas y beneficiarios servidos desde SQLite local con fallback a BDNS. Fix _row_to_search_result() para exponer nivel1/nivel2/nivel3 como campos top-level |
 | 0.3.3 | 2026-03 | Fix drill-down desde graficas de analytics: nuevos filtros `descripcionFinalidad` y `regionDesc` en `/api/convocatorias`, status chart usa `estado` en vez de `abierto` |
 | 0.3.4 | 2026-03 | Busqueda hibrida FAISS+FTS5+RRF: indice vectorial FAISS en memoria reemplaza coseno numpy. Embeddings migrados a tabla separada `conv_embeddings` para reducir I/O en queries analytics (~21s → <1s). Covering indexes para analytics |
+| 0.4.0 | 2026-03 | Generacion automatica de posts para RRSS: tabla `generated_posts` en convocatorias.db, script CLI `generate_posts.py` con 6 tipos de post (ayuda_destacada, datos_semana, cierre_inminente, tematico, top_organismo, dato_curioso), OpenAI gpt-4o-mini para copywriting (X + LinkedIn), endpoints admin para gestion de drafts |

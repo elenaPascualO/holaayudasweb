@@ -65,8 +65,11 @@ CONVOCATORIAS_DB_PATH: str = os.getenv(
     str(Path(__file__).parent.parent / "data" / "convocatorias.db"),
 )
 
-# OpenAI API key for embeddings
+# OpenAI API key for embeddings and post generation
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+
+# OpenAI model for social media post generation (cost-efficient)
+POSTS_OPENAI_MODEL: str = os.getenv("POSTS_OPENAI_MODEL", "gpt-4o")
 
 # Discord webhook for feedback notifications
 DISCORD_WEBHOOK_URL: str = os.getenv("DISCORD_WEBHOOK_URL", "")

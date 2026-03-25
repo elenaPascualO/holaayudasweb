@@ -21,20 +21,24 @@ from starlette.middleware.base import BaseHTTPMiddleware
 try:
     # Production: running from root with 'backend.main:app'
     from backend.config import CORS_ORIGINS, IS_PRODUCTION
-    from backend.routes import admin_router, analytics_router, beneficiarios_router, catalogs_router, concesiones_router, convocatorias_router, feedback_router, semantic_router, seo_router
+    from backend.routes import admin_router, analytics_router, beneficiarios_router, catalogs_router, concesiones_router, convocatorias_router, feedback_router, posts_router, semantic_router, seo_router
     from backend.routes.admin import cancel_sync_task
+    from backend.routes.posts import cancel_generate_task
     from backend.services.bdns_client import close_client
     from backend.services.beneficiarios_db import init_db
     from backend.services.convocatorias_db import init_convocatorias_db
+    from backend.services.posts_db import init_posts_db
     from backend.services.seo import get_index_html_with_meta, load_index_template
 except ImportError:
     # Development: running from backend/ with 'main:app'
     from config import CORS_ORIGINS, IS_PRODUCTION
-    from routes import admin_router, analytics_router, beneficiarios_router, catalogs_router, concesiones_router, convocatorias_router, feedback_router, semantic_router, seo_router
+    from routes import admin_router, analytics_router, beneficiarios_router, catalogs_router, concesiones_router, convocatorias_router, feedback_router, posts_router, semantic_router, seo_router
     from routes.admin import cancel_sync_task
+    from routes.posts import cancel_generate_task
     from services.bdns_client import close_client
     from services.beneficiarios_db import init_db
     from services.convocatorias_db import init_convocatorias_db
+    from services.posts_db import init_posts_db
     from services.seo import get_index_html_with_meta, load_index_template
 
 # Path to built frontend (used by lifespan and static file serving)
@@ -46,6 +50,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown events."""
     init_db()
     init_convocatorias_db()
+    init_posts_db()
     load_index_template(frontend_dist)
 
     # Load FAISS index in background (search works FTS-only until ready)
@@ -74,6 +79,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
     cancel_sync_task()
+    cancel_generate_task()
     await close_client()
 
 
@@ -138,6 +144,7 @@ app.include_router(feedback_router)
 app.include_router(semantic_router)
 app.include_router(analytics_router)
 app.include_router(admin_router)
+app.include_router(posts_router)
 app.include_router(seo_router)
 
 
