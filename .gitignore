@@ -13,3 +13,6 @@ CLAUDE.md
 frontend/node_modules/
 frontend/dist/
 __pycache__/
+
+# Google Cloud credentials
+/data/gsc-credentials*.json

@@ -221,5 +221,10 @@ def get_index_html_with_meta(filename: str) -> str | None:
         html = _replace_meta(html, "property", "og:url", url)
         html = _replace_meta(html, "name", "twitter:title", title)
         html = _replace_meta(html, "name", "twitter:description", description)
+    else:
+        # Unknown route — still set canonical to the clean path (no query params)
+        url = f"{BASE_URL}{lookup_path}"
+        html = _replace_canonical(html, url)
+        html = _replace_meta(html, "property", "og:url", url)
 
     return html

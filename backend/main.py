@@ -20,7 +20,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 try:
     # Production: running from root with 'backend.main:app'
-    from backend.config import CORS_ORIGINS, IS_PRODUCTION
+    from backend.config import CORS_ORIGINS, IS_PRODUCTION, SITE_BASE_URL
     from backend.routes import admin_router, analytics_router, beneficiarios_router, catalogs_router, concesiones_router, convocatorias_router, feedback_router, posts_router, semantic_router, seo_router
     from backend.routes.admin import cancel_sync_task
     from backend.routes.posts import cancel_generate_task
@@ -31,7 +31,7 @@ try:
     from backend.services.seo import get_index_html_with_meta, load_index_template
 except ImportError:
     # Development: running from backend/ with 'main:app'
-    from config import CORS_ORIGINS, IS_PRODUCTION
+    from config import CORS_ORIGINS, IS_PRODUCTION, SITE_BASE_URL
     from routes import admin_router, analytics_router, beneficiarios_router, catalogs_router, concesiones_router, convocatorias_router, feedback_router, posts_router, semantic_router, seo_router
     from routes.admin import cancel_sync_task
     from routes.posts import cancel_generate_task
@@ -124,6 +124,28 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+
+# WWW redirect middleware (301) — fixes canonical duplication in Google
+class WwwRedirectMiddleware(BaseHTTPMiddleware):
+    """Redirect non-www requests to www in production."""
+
+    async def dispatch(self, request: Request, call_next):
+        host = request.url.hostname or ""
+        if (
+            IS_PRODUCTION
+            and host
+            and not host.startswith("www.")
+            and "." in host  # skip localhost, test hosts, IP addresses without dots
+        ):
+            target = SITE_BASE_URL + request.url.path
+            if request.url.query:
+                target += f"?{request.url.query}"
+            return Response(status_code=301, headers={"Location": target})
+        return await call_next(request)
+
+
+app.add_middleware(WwwRedirectMiddleware)
 
 # CORS middleware
 app.add_middleware(

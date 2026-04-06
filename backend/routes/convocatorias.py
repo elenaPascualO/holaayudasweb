@@ -177,7 +177,7 @@ async def get_document(doc_id: str) -> StreamingResponse:
         )
         response.raise_for_status()
     except Exception:
-        raise HTTPException(status_code=502, detail="Error fetching document from BDNS")
+        raise HTTPException(status_code=404, detail="Document not found")
 
     content_type = response.headers.get("content-type", "application/octet-stream")
     # Extract the base MIME type (ignore charset etc.)
@@ -188,7 +188,7 @@ async def get_document(doc_id: str) -> StreamingResponse:
         content_type = "application/pdf"
         base_type = "application/pdf"
 
-    headers: dict[str, str] = {}
+    headers: dict[str, str] = {"X-Robots-Tag": "noindex"}
 
     # Copy original content-disposition if present
     original_disposition = response.headers.get("content-disposition", "")
@@ -225,3 +225,6 @@ async def grant_detail(bdns_code: str) -> dict:
         return await get_convocatoria_detail(bdns_code)
     except BDNSError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
+    except Exception:
+        logger.exception("Unexpected error fetching grant %s", bdns_code)
+        raise HTTPException(status_code=404, detail=f"Grant {bdns_code} not found")
