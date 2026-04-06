@@ -19,7 +19,7 @@ _index_template: str = ""
 _STATIC_PAGES: dict[str, dict[str, str]] = {
     "/": {
         "title": "Hola Ayudas - Busca ayudas y subvenciones publicas",
-        "description": "Busca ayudas y subvenciones publicas en España de forma facil y rapida. Interfaz moderna para la Base de Datos Nacional de Subvenciones (BDNS). Gratis y sin registro.",
+        "description": "Busca ayudas y subvenciones publicas en España de forma facil y rapida. Interfaz moderna para la Base de Datos Nacional de Subvenciones (BDNS).",
     },
     "/buscar": {
         "title": "Buscar ayudas y subvenciones | Hola Ayudas",
@@ -94,6 +94,49 @@ def _inject_json_ld(html: str, schemas: list[dict]) -> str:
     for schema in schemas:
         scripts += f'<script type="application/ld+json">{json.dumps(schema, ensure_ascii=False)}</script>\n'
     return html.replace("</head>", f"{scripts}</head>")
+
+
+def _build_static_json_ld(path: str, title: str, description: str) -> list[dict]:
+    """Build JSON-LD schemas for static pages."""
+    schemas: list[dict] = []
+
+    if path == "/":
+        # Homepage: WebSite with SearchAction (enables Bing/Google sitelinks search box)
+        schemas.append({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "Hola Ayudas",
+            "url": BASE_URL,
+            "description": description,
+            "potentialAction": {
+                "@type": "SearchAction",
+                "target": {
+                    "@type": "EntryPoint",
+                    "urlTemplate": f"{BASE_URL}/buscar?q={{search_term_string}}",
+                },
+                "query-input": "required name=search_term_string",
+            },
+        })
+    else:
+        # Other static pages: WebPage + BreadcrumbList
+        schemas.append({
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": title,
+            "description": description,
+            "url": f"{BASE_URL}{path}",
+            "isPartOf": {"@type": "WebSite", "name": "Hola Ayudas", "url": BASE_URL},
+        })
+        schemas.append({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+                {"@type": "ListItem", "position": 1, "name": "Inicio", "item": f"{BASE_URL}/"},
+                {"@type": "ListItem", "position": 2, "name": title.split("|")[0].strip(), "item": f"{BASE_URL}{path}"},
+            ],
+        })
+
+    return schemas
 
 
 def _build_grant_json_ld(grant: dict, bdns_code: str) -> list[dict]:
@@ -221,6 +264,10 @@ def get_index_html_with_meta(filename: str) -> str | None:
         html = _replace_meta(html, "property", "og:url", url)
         html = _replace_meta(html, "name", "twitter:title", title)
         html = _replace_meta(html, "name", "twitter:description", description)
+
+        # JSON-LD structured data
+        schemas = _build_static_json_ld(lookup_path, title, description)
+        html = _inject_json_ld(html, schemas)
     else:
         # Unknown route — still set canonical to the clean path (no query params)
         url = f"{BASE_URL}{lookup_path}"
