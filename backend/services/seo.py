@@ -1,9 +1,12 @@
-"""Server-side SEO meta tag injection for crawlers and social media previews.
+"""Server-side SEO meta/body injection for crawlers and social media previews.
 
 Reads the Vite-built index.html once at startup and replaces meta tags
-dynamically for each request based on the URL path.
+and body content dynamically for each request based on the URL path.
+For grant detail pages, injects a semantic HTML summary so Google can
+index the content without executing JavaScript.
 """
 
+import html as html_module
 import json
 import logging
 import re
@@ -139,6 +142,117 @@ def _build_static_json_ld(path: str, title: str, description: str) -> list[dict]
     return schemas
 
 
+def _esc(text: str) -> str:
+    """HTML-escape a string."""
+    return html_module.escape(text, quote=True)
+
+
+def _format_currency_es(amount: float | int | None) -> str | None:
+    """Format a number as Spanish currency (e.g. 1.500.000,00 EUR)."""
+    if amount is None:
+        return None
+    # Format with 2 decimals, then swap separators to Spanish style
+    formatted = f"{amount:,.2f}"
+    # "1,500,000.00" → "1.500.000,00"
+    formatted = formatted.replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{formatted} EUR"
+
+
+def _format_date_es(date_str: str | None) -> str | None:
+    """Format an ISO date (YYYY-MM-DD) to Spanish (e.g. '15 de marzo de 2026')."""
+    if not date_str:
+        return None
+    months = [
+        "enero", "febrero", "marzo", "abril", "mayo", "junio",
+        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+    ]
+    try:
+        parts = date_str[:10].split("-")
+        year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
+        return f"{day} de {months[month - 1]} de {year}"
+    except (ValueError, IndexError):
+        return date_str
+
+
+def _build_grant_body_html(grant: dict, bdns_code: str) -> str:
+    """Build a semantic HTML summary of a grant for server-side body injection.
+
+    This content is visible to crawlers (Google, Bing) without JS execution.
+    The frontend JS replaces it with the interactive version on load.
+    """
+    parts: list[str] = ['<article>']
+
+    # Title
+    titulo = _esc(grant.get("descripcion") or f"Ayuda {bdns_code}")
+    parts.append(f"<h1>{titulo}</h1>")
+
+    # Organism
+    organo = grant.get("organo") or {}
+    org_parts = [p for p in [organo.get("nivel3"), organo.get("nivel2"), organo.get("nivel1")] if p]
+    if org_parts:
+        parts.append(f'<p>{_esc(" · ".join(org_parts))}</p>')
+
+    # Key facts as definition list
+    parts.append("<dl>")
+    if grant.get("presupuestoTotal"):
+        budget = _format_currency_es(grant["presupuestoTotal"])
+        parts.append(f"<dt>Presupuesto</dt><dd>{_esc(budget)}</dd>")
+    if grant.get("descripcionFinalidad"):
+        parts.append(f'<dt>Finalidad</dt><dd>{_esc(grant["descripcionFinalidad"])}</dd>')
+    if grant.get("fechaRecepcion"):
+        fecha = _format_date_es(grant["fechaRecepcion"])
+        if fecha:
+            parts.append(f"<dt>Fecha publicacion</dt><dd>{_esc(fecha)}</dd>")
+    if grant.get("fechaInicioSolicitud"):
+        fecha = _format_date_es(grant["fechaInicioSolicitud"])
+        if fecha:
+            parts.append(f"<dt>Inicio solicitudes</dt><dd>{_esc(fecha)}</dd>")
+    if grant.get("fechaFinSolicitud"):
+        fecha = _format_date_es(grant["fechaFinSolicitud"])
+        if fecha:
+            parts.append(f"<dt>Fin solicitudes</dt><dd>{_esc(fecha)}</dd>")
+    if grant.get("tipoConvocatoria"):
+        parts.append(f'<dt>Tipo</dt><dd>{_esc(grant["tipoConvocatoria"])}</dd>')
+    parts.append("</dl>")
+
+    # Regions
+    regiones = grant.get("regiones") or []
+    if regiones:
+        names = [r.get("descripcion") or "" for r in regiones if r.get("descripcion")]
+        if names:
+            items = "".join(f"<li>{_esc(n)}</li>" for n in names)
+            parts.append(f"<h2>Regiones</h2><ul>{items}</ul>")
+
+    # Beneficiary types
+    beneficiarios = grant.get("tiposBeneficiarios") or []
+    if beneficiarios:
+        names = [b.get("descripcion") or "" for b in beneficiarios if b.get("descripcion")]
+        if names:
+            items = "".join(f"<li>{_esc(n)}</li>" for n in names)
+            parts.append(f"<h2>Beneficiarios</h2><ul>{items}</ul>")
+
+    # Bases reguladoras
+    if grant.get("descripcionBasesReguladoras"):
+        parts.append(f'<h2>Bases reguladoras</h2><p>{_esc(grant["descripcionBasesReguladoras"])}</p>')
+
+    parts.append(f'<p>Codigo BDNS: {_esc(bdns_code)}</p>')
+    parts.append('<noscript><p>Activa JavaScript para usar todas las funciones de Hola Ayudas.</p></noscript>')
+    parts.append("</article>")
+
+    return "\n".join(parts)
+
+
+def _inject_body_content(html: str, body_html: str) -> str:
+    """Replace the content inside <div id="app">...</div> with server-rendered HTML."""
+    return re.sub(
+        r'(<div id="app">).*?(</div>)',
+        rf"\1{body_html}\2",
+        html,
+        count=1,
+        flags=re.DOTALL,
+    )
+
+
 def _build_grant_json_ld(grant: dict, bdns_code: str) -> list[dict]:
     """Build JSON-LD schemas for a grant detail page."""
     organo = grant.get("organo") or {}
@@ -234,6 +348,10 @@ def get_index_html_with_meta(filename: str) -> str | None:
             # JSON-LD
             schemas = _build_grant_json_ld(grant, bdns_code)
             html = _inject_json_ld(html, schemas)
+
+            # Server-side body content for crawlers
+            body_html = _build_grant_body_html(grant, bdns_code)
+            html = _inject_body_content(html, body_html)
 
             return html
 

@@ -202,15 +202,56 @@ Googlebot pide /sitemap-grants-open-1.xml
 
 ---
 
+## SSR Body Injection (Server-Side Rendering parcial)
+
+### Problema
+
+Google descubria las ~616K URLs del sitemap pero no las indexaba (0 indexadas de 75K descubiertas). La razon: al ser una SPA, todas las paginas devolvian el mismo `<body>` generico con un `<h1>` identico. Google las trataba como contenido duplicado/vacio y no gastaba recursos de renderizado JS en ellas.
+
+### Solucion
+
+`backend/services/seo.py` ahora inyecta **contenido HTML unico en el `<body>`** para cada pagina de detalle de ayuda, ademas de los meta tags en el `<head>`. Cuando Googlebot pide `/ayuda/341111`, recibe:
+
+```html
+<div id="app">
+  <article>
+    <h1>COMISION DE FIESTAS AGATE JAI...</h1>
+    <p>Organismo convocante</p>
+    <dl>
+      <dt>Presupuesto</dt><dd>8.500,00 EUR</dd>
+      <dt>Finalidad</dt><dd>Cultura</dd>
+      ...
+    </dl>
+    <h2>Regiones</h2><ul>...</ul>
+    <h2>Beneficiarios</h2><ul>...</ul>
+  </article>
+</div>
+```
+
+El JavaScript del frontend reemplaza este HTML al cargar (`app.innerHTML = ...`), asi que el usuario interactivo no nota ningun cambio.
+
+### Detalles tecnicos
+
+- **Sin queries extra**: reutiliza el dict `grant` que ya se obtenia para los meta tags
+- **HTML semantico**: `<article>`, `<h1>`, `<dl>`, `<ul>` — lo que Google valora
+- **Escapado seguro**: `html.escape()` en todos los campos (prevencion XSS)
+- **Formateo español**: fechas ("15 de marzo de 2026") y moneda ("1.500.000,00 EUR")
+- **Funciones**: `_build_grant_body_html()`, `_inject_body_content()`, `_format_currency_es()`, `_format_date_es()`
+- **Tests**: `backend/tests/test_seo.py` (32 tests)
+
+---
+
 ## Referencia de Archivos SEO
 
 | Archivo | Proposito |
 |---------|-----------|
-| `frontend/src/utils/seo.js` | Utilidades SEO: updateMetaTags(), buildBreadcrumbSchema(), buildGrantSchema() |
+| `backend/services/seo.py` | SSR: inyeccion de meta tags + body content + JSON-LD por ruta |
+| `backend/routes/seo.py` | Sitemap dinamico (index segmentado: open + closed by year + static) |
+| `backend/tests/test_seo.py` | Tests de formateo, escapado, inyeccion body y generacion HTML |
+| `frontend/src/utils/seo.js` | Utilidades SEO cliente: updateMetaTags(), buildBreadcrumbSchema(), buildGrantSchema() |
 | `frontend/index.html` | Meta tags base (OG, Twitter, canonical) |
-| `frontend/public/robots.txt` | Configuracion para crawlers |
+| `frontend/public/robots.txt` | Configuracion para crawlers (Disallow /api/) |
 | `frontend/public/og-image.png` | Preview para redes sociales (1200x630, logo "ha") |
-| `backend/routes/sitemap.py` | Sitemap dinamico (por implementar) |
 
 ---
 
@@ -224,7 +265,8 @@ Googlebot pide /sitemap-grants-open-1.xml
 | Legibilidad del detalle | Denso, burocratico | Limpio, estructurado |
 | Deep linking | URLs no funcionales | URLs SEO-friendly |
 | Compartir en redes | Sin tags OG | OG + Twitter Card completos |
-| Indexacion (sitemap) | Sin sitemap publico | 600K URLs con sitemap dinamico (pendiente) |
+| Indexacion (sitemap) | Sin sitemap publico | 616K URLs con sitemap dinamico |
+| SSR para crawlers | No (Angular SPA) | Contenido HTML unico por pagina (server-side) |
 
 ---
 
