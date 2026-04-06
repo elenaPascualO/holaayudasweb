@@ -97,6 +97,7 @@ export async function renderSearchPage(params) {
   } catch {
     return `
       ${createBackLink(params.returnTo)}
+      <h1 class="text-2xl font-bold text-gray-900 mb-4">Buscar ayudas y subvenciones</h1>
       ${createSearchBar(q)}
       ${createQuickFilters()}
 
@@ -115,6 +116,7 @@ export async function renderSearchPage(params) {
   if (!results.content || results.content.length === 0) {
     return `
       ${createBackLink(params.returnTo)}
+      <h1 class="text-2xl font-bold text-gray-900 mb-4">Buscar ayudas y subvenciones</h1>
       ${createSearchBar(q)}
       ${createQuickFilters()}
 
@@ -155,6 +157,7 @@ export async function renderSearchPage(params) {
 
   return `
     ${createBackLink(params.returnTo)}
+    <h1 class="text-2xl font-bold text-gray-900 mb-4">Buscar ayudas y subvenciones</h1>
     ${createSearchBar(q)}
     ${createQuickFilters()}
 

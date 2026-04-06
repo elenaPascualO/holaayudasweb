@@ -386,6 +386,11 @@ def get_index_html_with_meta(filename: str) -> str | None:
         # JSON-LD structured data
         schemas = _build_static_json_ld(lookup_path, title, description)
         html = _inject_json_ld(html, schemas)
+
+        # Inject H1 for crawlers that don't execute JS
+        page_h1 = title.split("|")[0].split(" - ")[0].strip()
+        body_html = f"<h1>{_esc(page_h1)}</h1><p>{_esc(description)}</p>"
+        html = _inject_body_content(html, body_html)
     else:
         # Unknown route — still set canonical to the clean path (no query params)
         url = f"{BASE_URL}{lookup_path}"

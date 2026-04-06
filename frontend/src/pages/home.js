@@ -31,6 +31,7 @@ export async function renderHomePage(params = {}) {
     results = await getLatestGrants(page, 20)
   } catch {
     return `
+      <h1 class="text-2xl font-bold text-gray-900 mb-4">Busca ayudas y subvenciones públicas</h1>
       ${createSearchBar()}
       ${createExampleChips()}
       ${createEmptyState(
@@ -42,6 +43,7 @@ export async function renderHomePage(params = {}) {
 
   if (!results.content || results.content.length === 0) {
     return `
+      <h1 class="text-2xl font-bold text-gray-900 mb-4">Busca ayudas y subvenciones públicas</h1>
       ${createSearchBar()}
       ${createExampleChips()}
       ${createEmptyState()}
