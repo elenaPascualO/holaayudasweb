@@ -588,6 +588,31 @@ def iter_all_embeddings(
         conn.close()
 
 
+def sample_embeddings(
+    n: int, db_path: str | None = None
+) -> list[tuple[int, bytes]]:
+    """Return a random sample of embeddings for FAISS training.
+
+    Uses SQLite random ordering to pick n rows without loading all data.
+
+    Args:
+        n: Number of embeddings to sample.
+        db_path: Override path (useful for tests).
+
+    Returns:
+        List of (convocatoria_id, embedding_blob) tuples.
+    """
+    conn = _get_connection(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT convocatoria_id, embedding FROM conv_embeddings ORDER BY RANDOM() LIMIT ?",
+            (n,),
+        ).fetchall()
+        return [(row["convocatoria_id"], row["embedding"]) for row in rows]
+    finally:
+        conn.close()
+
+
 def get_convocatorias_by_ids(
     ids: list[int], db_path: str | None = None
 ) -> dict[int, dict]:

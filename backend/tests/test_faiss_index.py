@@ -2,15 +2,18 @@
 
 import struct
 
+import faiss
 import numpy as np
 import pytest
 
 from backend.services.convocatorias_db import (
     init_convocatorias_db,
+    sample_embeddings,
     store_embeddings,
     update_convocatoria_detail,
     upsert_convocatorias_list,
 )
+from backend.services.embeddings import EMBEDDING_DIMS, embedding_to_blob
 from backend.services.faiss_index import (
     add_vectors,
     get_stats,
@@ -134,3 +137,184 @@ class TestFaissIndex:
 
         load_index_from_db(db_path=path)
         assert is_ready() is False
+
+
+def _insert_many_with_embeddings(db_path: str, count: int) -> None:
+    """Insert N convocatorias with detail and random embeddings."""
+    import sqlite3
+
+    batch = 500
+    for start in range(0, count, batch):
+        end = min(start + batch, count)
+        nums = [f"L{i:06d}" for i in range(start, end)]
+        records = [
+            {
+                "numeroConvocatoria": num,
+                "descripcion": f"Large test convocatoria {num}",
+                "fechaRecepcion": "2024-06-01",
+                "organo": {"nivel1": "ESTADO", "nivel2": "MIN", "nivel3": None},
+            }
+            for num in nums
+        ]
+        upsert_convocatorias_list(records, db_path)
+        for num in nums:
+            update_convocatoria_detail(
+                num, {"presupuestoTotal": 500.0, "abierto": True}, db_path
+            )
+
+        # Look up integer IDs for the inserted records
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        placeholders = ",".join("?" for _ in nums)
+        rows = conn.execute(
+            f"SELECT id, numero_convocatoria FROM convocatorias WHERE numero_convocatoria IN ({placeholders})",
+            nums,
+        ).fetchall()
+        conn.close()
+
+        embeddings = []
+        for row in rows:
+            vec = np.random.randn(EMBEDDING_DIMS).astype(np.float32)
+            vec /= np.linalg.norm(vec)
+            embeddings.append((row["id"], embedding_to_blob(vec.tolist())))
+        store_embeddings(embeddings, db_path)
+
+
+class TestSampleEmbeddings:
+    """Tests for the sample_embeddings() DB function."""
+
+    def test_returns_requested_count(self, tmp_path):
+        path = str(tmp_path / "sample.db")
+        init_convocatorias_db(path)
+        _insert_many_with_embeddings(path, 100)
+
+        result = sample_embeddings(30, path)
+        assert len(result) == 30
+
+    def test_returns_all_if_fewer_than_requested(self, tmp_path):
+        path = str(tmp_path / "sample.db")
+        init_convocatorias_db(path)
+        _insert_many_with_embeddings(path, 5)
+
+        result = sample_embeddings(50, path)
+        assert len(result) == 5
+
+    def test_returns_valid_blobs(self, tmp_path):
+        path = str(tmp_path / "sample.db")
+        init_convocatorias_db(path)
+        _insert_many_with_embeddings(path, 10)
+
+        result = sample_embeddings(5, path)
+        for conv_id, blob in result:
+            assert isinstance(conv_id, int)
+            assert isinstance(blob, bytes)
+            assert len(blob) == EMBEDDING_DIMS * 4
+
+    def test_empty_db(self, tmp_path):
+        path = str(tmp_path / "sample.db")
+        init_convocatorias_db(path)
+
+        result = sample_embeddings(10, path)
+        assert result == []
+
+
+def _simple_index_factory(dims, description, metric):
+    """Return a simple IVF index suitable for small test datasets.
+
+    The production OPQ64+IVF+PQ64 index needs thousands of vectors for stable
+    training. This factory creates a simpler IVFFlat index that works with
+    just a few hundred vectors while still exercising the 2-pass code path.
+    """
+    nlist = 4  # Small number of clusters for test data
+    index = faiss.IndexIVFFlat(faiss.IndexFlatIP(dims), dims, nlist, metric)
+    return index
+
+
+class TestLoadIndexTwoPass:
+    """Tests for the 2-pass training strategy (datasets >= IVF_THRESHOLD).
+
+    Uses monkeypatch to lower the threshold and use a simpler index factory
+    so we don't need 10K+ records for training.
+    """
+
+    COUNT = 200
+
+    @pytest.fixture(autouse=True)
+    def _lower_threshold(self, monkeypatch):
+        monkeypatch.setattr("backend.services.faiss_index._IVF_THRESHOLD", 100)
+        monkeypatch.setattr("backend.services.faiss_index._BATCH_SIZE", 50)
+        monkeypatch.setattr("faiss.index_factory", _simple_index_factory)
+
+    @pytest.fixture
+    def large_db(self, tmp_path):
+        path = str(tmp_path / "large.db")
+        init_convocatorias_db(path)
+        _insert_many_with_embeddings(path, self.COUNT)
+        return path
+
+    def test_builds_trained_index(self, large_db):
+        load_index_from_db(db_path=large_db)
+
+        stats = get_stats()
+        assert stats["ready"] is True
+        assert stats["total_vectors"] == self.COUNT
+
+    def test_all_vectors_indexed_not_just_sample(self, large_db):
+        """Pass 2 must add ALL vectors, not just the training sample."""
+        load_index_from_db(db_path=large_db)
+        assert get_stats()["total_vectors"] == self.COUNT
+
+    def test_search_works_after_training(self, large_db):
+        load_index_from_db(db_path=large_db)
+
+        query = np.random.randn(EMBEDDING_DIMS).astype(np.float32)
+        results = search(query, k=10)
+
+        assert len(results) > 0
+        assert len(results) <= 10
+        for conv_id, score in results:
+            assert isinstance(conv_id, int)
+            assert isinstance(score, float)
+
+    def test_known_vector_is_findable(self, tmp_path):
+        """Insert a distinctive vector and verify search finds it."""
+        import sqlite3
+
+        path = str(tmp_path / "needle.db")
+        init_convocatorias_db(path)
+        _insert_many_with_embeddings(path, self.COUNT)
+
+        # Insert a "needle" with a distinctive embedding
+        records = [{
+            "numeroConvocatoria": "NEEDLE",
+            "descripcion": "Needle grant",
+            "fechaRecepcion": "2024-01-01",
+            "organo": {"nivel1": "ESTADO", "nivel2": "MIN", "nivel3": None},
+        }]
+        upsert_convocatorias_list(records, path)
+        update_convocatoria_detail(
+            "NEEDLE", {"presupuestoTotal": 1.0, "abierto": True}, path
+        )
+
+        # Look up the integer ID
+        conn = sqlite3.connect(path)
+        needle_id = conn.execute(
+            "SELECT id FROM convocatorias WHERE numero_convocatoria = 'NEEDLE'"
+        ).fetchone()[0]
+        conn.close()
+
+        # Distinctive: all weight on dimension 0
+        needle_vec = [0.0] * EMBEDDING_DIMS
+        needle_vec[0] = 1.0
+        store_embeddings([(needle_id, embedding_to_blob(needle_vec))], path)
+
+        load_index_from_db(db_path=path)
+
+        # Search with a query aligned to dimension 0
+        query = np.zeros(EMBEDDING_DIMS, dtype=np.float32)
+        query[0] = 1.0
+        results = search(query, k=5)
+
+        # The needle should appear with a high score
+        top_scores = [(cid, s) for cid, s in results if s > 0.5]
+        assert len(top_scores) > 0, f"Expected needle in top results, got: {results}"

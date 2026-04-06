@@ -27,7 +27,10 @@ def is_ready() -> bool:
 
 
 def load_index_from_db(db_path: str | None = None) -> None:
-    """Load all embeddings from SQLite and build FAISS index.
+    """Load embeddings from SQLite and build FAISS index using low-memory 2-pass strategy.
+
+    Pass 1: Load a small sample to train the index (~300 MB peak).
+    Pass 2: Stream all embeddings in batches to populate the trained index (~60 MB per batch).
 
     For >= 10K vectors: builds OPQ64,IVF1024,PQ64 (trained, ~40 MB for 600K).
     For < 10K vectors: builds IndexFlatIP (brute-force, fine at small scale).
@@ -38,68 +41,76 @@ def load_index_from_db(db_path: str | None = None) -> None:
     global _index, _id_array, _ready
 
     # Lazy import to avoid circular dependency
-    from backend.services.convocatorias_db import get_embedding_count, iter_all_embeddings
+    from backend.services.convocatorias_db import (
+        get_embedding_count,
+        iter_all_embeddings,
+        sample_embeddings,
+    )
 
     total = get_embedding_count(db_path=db_path)
     if total == 0:
         logger.warning("No embeddings found in DB — FAISS index not built")
         return
 
-    logger.info("Loading %d embeddings from SQLite for FAISS index...", total)
-
-    # Read all embeddings in batches
-    all_ids: list[int] = []
-    all_vecs: list[np.ndarray] = []
-
-    for batch in iter_all_embeddings(batch_size=_BATCH_SIZE, db_path=db_path):
-        batch_ids = []
-        batch_vecs = []
-        for conv_id, blob in batch:
-            batch_ids.append(conv_id)
-            batch_vecs.append(blob_to_embedding(blob))
-        all_ids.extend(batch_ids)
-        all_vecs.append(np.array(batch_vecs, dtype=np.float32))
-
-    ids = np.array(all_ids, dtype=np.int64)
-    vectors = np.vstack(all_vecs)
-
-    # Normalize vectors (OpenAI embeddings should already be normalized, but be safe)
-    faiss.normalize_L2(vectors)
+    logger.info("Building FAISS index for %d embeddings (low-memory mode)...", total)
 
     if total < _IVF_THRESHOLD:
-        # Small dataset — brute-force is fine
+        # Small dataset — brute-force, load everything (small enough to fit in memory)
         logger.info("Building IndexFlatIP for %d vectors", total)
         index = faiss.IndexFlatIP(EMBEDDING_DIMS)
+        id_index = faiss.IndexIDMap2(index)
+
+        for batch in iter_all_embeddings(batch_size=_BATCH_SIZE, db_path=db_path):
+            batch_vecs = np.array(
+                [blob_to_embedding(blob) for _, blob in batch], dtype=np.float32
+            )
+            batch_ids = np.array([conv_id for conv_id, _ in batch], dtype=np.int64)
+            faiss.normalize_L2(batch_vecs)
+            id_index.add_with_ids(batch_vecs, batch_ids)
     else:
-        # Large dataset — use OPQ + IVF + PQ for memory efficiency
-        nlist = min(1024, total // 40)  # ~40 vectors per cluster minimum
-        logger.info(
-            "Building OPQ64,IVF%d,PQ64 index for %d vectors...", nlist, total
-        )
-        index = faiss.index_factory(EMBEDDING_DIMS, f"OPQ64,IVF{nlist},PQ64", faiss.METRIC_INNER_PRODUCT)
-
-        # Train on a sample (up to 50K random vectors)
+        # --- Pass 1: Train on a random sample (low memory) ---
         train_size = min(50_000, total)
-        if train_size < total:
-            sample_idx = np.random.choice(total, train_size, replace=False)
-            train_data = vectors[sample_idx]
-        else:
-            train_data = vectors
+        logger.info("Pass 1/2: Loading %d random vectors for training...", train_size)
 
-        logger.info("Training FAISS index on %d vectors...", train_size)
+        sample = sample_embeddings(train_size, db_path=db_path)
+        train_data = np.array(
+            [blob_to_embedding(blob) for _, blob in sample], dtype=np.float32
+        )
+        del sample  # Free blob data
+        faiss.normalize_L2(train_data)
+
+        nlist = min(1024, total // 40)
+        logger.info("Training OPQ64,IVF%d,PQ64 index on %d vectors...", nlist, train_size)
+        index = faiss.index_factory(
+            EMBEDDING_DIMS, f"OPQ64,IVF{nlist},PQ64", faiss.METRIC_INNER_PRODUCT
+        )
         index.train(train_data)
+        del train_data  # Free training data
 
-        # Set nprobe for search quality
         ivf = faiss.extract_index_ivf(index)
         ivf.nprobe = 32
 
-    # Wrap with IDMap2 to map FAISS positions to convocatoria IDs
-    id_index = faiss.IndexIDMap2(index)
-    id_index.add_with_ids(vectors, ids)
+        # --- Pass 2: Populate index in batches (low memory) ---
+        id_index = faiss.IndexIDMap2(index)
+        added = 0
+        logger.info("Pass 2/2: Populating index in batches of %d...", _BATCH_SIZE)
+
+        for batch in iter_all_embeddings(batch_size=_BATCH_SIZE, db_path=db_path):
+            batch_vecs = np.array(
+                [blob_to_embedding(blob) for _, blob in batch], dtype=np.float32
+            )
+            batch_ids = np.array([conv_id for conv_id, _ in batch], dtype=np.int64)
+            faiss.normalize_L2(batch_vecs)
+            id_index.add_with_ids(batch_vecs, batch_ids)
+            added += len(batch)
+            if added % 100_000 == 0:
+                logger.info("  ... added %d / %d vectors", added, total)
+
+    all_ids = np.array(faiss.vector_to_array(id_index.id_map), dtype=np.int64)
 
     with _lock:
         _index = id_index
-        _id_array = ids
+        _id_array = all_ids
         _ready = True
 
     logger.info("FAISS index ready: %d vectors indexed", id_index.ntotal)

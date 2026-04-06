@@ -335,7 +335,10 @@ query → OpenAI embed → FAISS   ─┘
 
 **Threshold:** Score minimo de cosine similarity = 0.25 para resultados FAISS.
 
-**Carga del indice:** Se construye en background al arrancar la app (~15-30s).
+**Carga del indice:** Se construye en background al arrancar la app usando una
+estrategia de 2 pasadas con memoria constante (~400 MB pico en vez de ~7 GB):
+1. Pasada 1: carga un sample aleatorio de 50K vectores de SQLite para entrenar el indice
+2. Pasada 2: itera todos los embeddings en batches de 10K y los añade al indice entrenado
 Se refresca tras cada sync de embeddings. La busqueda funciona en modo FTS5-only
 mientras FAISS carga.
 
@@ -481,3 +484,4 @@ BDNS_BASE_URL=https://www.infosubvenciones.es/bdnstrans/api
 | 0.3.3 | 2026-03 | Fix drill-down desde graficas de analytics: nuevos filtros `descripcionFinalidad` y `regionDesc` en `/api/convocatorias`, status chart usa `estado` en vez de `abierto` |
 | 0.3.4 | 2026-03 | Busqueda hibrida FAISS+FTS5+RRF: indice vectorial FAISS en memoria reemplaza coseno numpy. Embeddings migrados a tabla separada `conv_embeddings` para reducir I/O en queries analytics (~21s → <1s). Covering indexes para analytics |
 | 0.4.0 | 2026-03 | Generacion automatica de posts para RRSS: tabla `generated_posts` en convocatorias.db, script CLI `generate_posts.py` con 6 tipos de post (ayuda_destacada, datos_semana, cierre_inminente, tematico, top_organismo, dato_curioso), OpenAI gpt-4o-mini para copywriting (X + LinkedIn), endpoints admin para gestion de drafts |
+| 0.4.1 | 2026-04 | Fix FAISS OOM en produccion: carga del indice vectorial con estrategia de 2 pasadas y memoria constante (~400 MB pico vs ~7 GB anterior). Nueva funcion `sample_embeddings()` para training sample via SQL |
