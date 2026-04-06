@@ -79,3 +79,11 @@ ADMIN_SECRET: str = os.getenv("ADMIN_SECRET", "")
 
 # Public base URL for sitemap and SEO canonical links
 SITE_BASE_URL: str = os.getenv("SITE_BASE_URL", "https://www.holaayudas.com")
+
+# SMTP settings for sync failure notifications
+SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER: str = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM: str = os.getenv("SMTP_FROM", "")
+ALERT_EMAIL_TO: str = os.getenv("ALERT_EMAIL_TO", "")

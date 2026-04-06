@@ -95,6 +95,10 @@ async def _run_sync_background(mode: str) -> None:
         _sync_state = finished
         _last_result_by_mode[mode] = finished
 
+        from backend.services.email_notify import send_sync_failure_email
+
+        await send_sync_failure_email("convocatorias", str(e), mode=mode)
+
 
 def cancel_sync_task() -> None:
     """Cancel running sync tasks if any. Called during app shutdown."""
@@ -133,6 +137,10 @@ async def _run_beneficiarios_sync_background() -> None:
             "error": str(e),
             "finished_at": datetime.now(timezone.utc).isoformat(),
         }
+
+        from backend.services.email_notify import send_sync_failure_email
+
+        await send_sync_failure_email("beneficiarios", str(e))
 
 
 @router.post("/sync/beneficiarios")
