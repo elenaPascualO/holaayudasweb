@@ -288,3 +288,63 @@ class TestGetIndexHtmlWithMetaStatusCodes:
         assert result is not None
         html, status = result
         assert status == 200
+
+
+# ---------------------------------------------------------------------------
+# Cross-check: every frontend static route has SEO config + sitemap entry
+# ---------------------------------------------------------------------------
+
+import re
+from pathlib import Path
+
+from backend.services.seo import _STATIC_PAGES as SEO_STATIC_PAGES
+from backend.routes.seo import _STATIC_PAGES as SITEMAP_STATIC_PAGES
+
+
+def _extract_frontend_static_routes() -> set[str]:
+    """Parse main.js to extract static routes (no :params) registered via registerRoute."""
+    main_js = Path(__file__).resolve().parents[2] / "frontend" / "src" / "main.js"
+    content = main_js.read_text()
+    # Match registerRoute('/path', ...) — skip routes with : (dynamic params)
+    routes = set(re.findall(r"registerRoute\(\s*'(/[^']*)'", content))
+    return {r for r in routes if ":" not in r}
+
+
+class TestSeoCompleteness:
+    """Ensure every frontend static route has backend SEO meta tags + sitemap entry."""
+
+    ROUTES = _extract_frontend_static_routes()
+
+    # Routes that are auxiliary (require query params, not navigable directly)
+    # — they need meta tags but should NOT be in the sitemap.
+    _SITEMAP_EXCLUDED = {"/concesiones"}
+
+    def test_found_routes(self):
+        """Sanity check: we should find at least the known routes."""
+        assert len(self.ROUTES) >= 5, f"Only found {self.ROUTES}, expected at least 5 static routes"
+
+    @pytest.mark.parametrize("route", sorted(_extract_frontend_static_routes()))
+    def test_route_has_seo_meta(self, route):
+        """Every static route should have an entry in backend/services/seo.py _STATIC_PAGES."""
+        assert route in SEO_STATIC_PAGES, (
+            f"Route {route} registered in main.js but missing from "
+            f"backend/services/seo.py _STATIC_PAGES — crawlers will get generic meta tags"
+        )
+
+    @pytest.mark.parametrize("route", sorted(_extract_frontend_static_routes() - _SITEMAP_EXCLUDED))
+    def test_route_has_sitemap_entry(self, route):
+        """Every navigable static route should have an entry in backend/routes/seo.py _STATIC_PAGES."""
+        sitemap_locs = {p["loc"] for p in SITEMAP_STATIC_PAGES}
+        assert route in sitemap_locs, (
+            f"Route {route} registered in main.js but missing from "
+            f"backend/routes/seo.py _STATIC_PAGES — Google won't discover it via sitemap"
+        )
+
+    def test_excluded_routes_not_in_sitemap(self):
+        """Auxiliary routes should NOT appear in the sitemap."""
+        sitemap_locs = {p["loc"] for p in SITEMAP_STATIC_PAGES}
+        for route in self._SITEMAP_EXCLUDED:
+            assert route not in sitemap_locs, (
+                f"Auxiliary route {route} should not be in the sitemap "
+                f"(it requires query params and shows empty content without them)"
+            )
