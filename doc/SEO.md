@@ -1,10 +1,10 @@
 # Plan de Accion SEO - Hola Ayudas
 
-> Ultima actualizacion: 2026-03-24
+> Ultima actualizacion: 2026-04-08
 
 ## Estado Actual
 
-Auditoria completa realizada el 2026-03-24. SEO tecnico base implementado (meta tags, OG, canonical, seo.js dinamico, JSON-LD en detalle). Gaps criticos: no existe sitemap.xml, falta schema en homepage, OG image con dimensiones incorrectas.
+SEO tecnico completo: meta tags, OG, canonical, seo.js dinamico, JSON-LD, sitemap dinamico segmentado (~600K URLs), SSR body injection, gzip condicional en sitemaps, 404 real para grants inexistentes, proteccion contra 5xx en crawling.
 
 ---
 
@@ -17,7 +17,7 @@ Hola Ayudas tiene una oportunidad SEO unica: las ~600K paginas de detalle de con
 | Canal | Fase | Estado |
 |-------|------|--------|
 | Referidos de HolaDatos (enlaces en publicaciones) | 0-1 | Activo |
-| Busqueda organica (long-tail convocatorias) | 2+ | Pendiente — requiere sitemap dinamico |
+| Busqueda organica (long-tail convocatorias) | 2+ | Activo — sitemap dinamico + SSR + 66K indexadas en Google |
 | Busqueda organica (keywords genericas) | 3+ | Futuro |
 
 ---
@@ -74,9 +74,15 @@ Hola Ayudas tiene una oportunidad SEO unica: las ~600K paginas de detalle de con
 - [x] **`rel="next"`/`rel="prev"`** en resultados paginados (`seo.js` + `Pagination.js` data attrs + `main.js`)
 - [x] **Focus management en navegacion SPA** — focus a `<main>` tras render + `scrollTo(0,0)` + outline oculto para mouse
 
-### Fase 3: Mejoras (futuro)
+### Fase 3: Optimizacion de Crawl Budget (completado)
 
-- [ ] Seccion de FAQ
+- [x] **Gzip condicional en sitemaps** — comprime solo si el crawler envia `Accept-Encoding: gzip` (compatible Google + Bing)
+- [x] **404 real para grants inexistentes** — devuelve HTTP 404 + `noindex` + body informativo en vez de soft 404 con 200
+- [x] **Proteccion 5xx en SEO service** — try/except en `get_convocatoria_detail_local()` evita crashes por DB bloqueada durante crawling
+- [x] **Pagina /como-funciona** — FAQ con metadata SEO y sitemap
+
+### Fase 4: Mejoras (futuro)
+
 - [ ] Landing pages estaticas por segmento de audiencia
 - [ ] `og:image:alt` en todas las paginas
 - [ ] `twitter:site` y `twitter:creator` con handle de HolaDatos
@@ -99,7 +105,7 @@ Hola Ayudas tiene una oportunidad SEO unica: las ~600K paginas de detalle de con
 ```
 /sitemap.xml                              ← Sitemap Index
 │
-├── /sitemap-static.xml                   ← 6 URLs (home, buscar, beneficiarios, estadisticas, concesiones, contacto)
+├── /sitemap-static.xml                   ← 6 URLs (home, buscar, beneficiarios, estadisticas, contacto, como-funciona)
 │
 ├── /sitemap-grants-open-1.xml            ← Ayudas abiertas batch 1 (≤50K)
 ├── /sitemap-grants-open-2.xml            ← batch 2
@@ -174,7 +180,7 @@ Clave para crawl budget — Google re-crawlea solo hijos con `lastmod` reciente:
 
 #### Compresion
 
-Servir con `Content-Type: application/xml` y gzip via middleware FastAPI. Un sitemap de 50K URLs ≈ 2-3MB sin comprimir, ~200KB comprimido.
+Gzip condicional: solo comprime si el cliente envia `Accept-Encoding: gzip` en el request. Google y Bing lo envian siempre; otros clientes reciben XML plano. Implementado en `_xml_response()` en `backend/routes/seo.py`. Un sitemap de 50K URLs ≈ 5-10MB sin comprimir, ~500KB-1MB comprimido.
 
 #### `lastmod` por URL
 
@@ -237,7 +243,9 @@ El JavaScript del frontend reemplaza este HTML al cargar (`app.innerHTML = ...`)
 - **Escapado seguro**: `html.escape()` en todos los campos (prevencion XSS)
 - **Formateo español**: fechas ("15 de marzo de 2026") y moneda ("1.500.000,00 EUR")
 - **Funciones**: `_build_grant_body_html()`, `_inject_body_content()`, `_format_currency_es()`, `_format_date_es()`
-- **Tests**: `backend/tests/test_seo.py` (32 tests)
+- **Status codes**: `get_index_html_with_meta()` devuelve `(html, status_code)` — 200 para paginas validas, 404 para grants inexistentes
+- **Error handling**: DB exceptions en SEO service se capturan y devuelven 404 en vez de 5xx
+- **Tests**: `backend/tests/test_seo.py` (39 tests)
 
 ---
 

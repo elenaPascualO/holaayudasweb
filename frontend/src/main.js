@@ -14,6 +14,7 @@ import { renderDetailPage } from './pages/detail.js'
 import { renderTransparenciaPage } from './pages/beneficiarios.js'
 import { renderConcesionesPage } from './pages/concesiones.js'
 import { renderContactoPage } from './pages/contacto.js'
+import { renderComoFuncionaPage } from './pages/como-funciona.js'
 import { renderAnalyticsPage, initAnalyticsCharts, initKeywordTrend } from './pages/analytics.js'
 import { getGrantDetailCached, getConcesionesCount, searchConcesiones, submitFeedback } from './utils/api.js'
 import { getGrantStatus } from './utils/dates.js'
@@ -70,6 +71,8 @@ function createFooter() {
           <a href="/contacto" data-link class="text-gray-400 hover:text-primary no-underline">HolaDatos</a>
           ·
           <a href="/contacto" data-link class="text-gray-400 hover:text-primary no-underline">Contacto</a>
+          ·
+          <a href="/como-funciona" data-link class="text-gray-400 hover:text-primary no-underline">Como funciona</a>
         </p>
       </div>
     </footer>
@@ -871,6 +874,16 @@ registerRoute('/contacto', () => {
     title: 'Contacto',
     description: 'Contacta con el equipo de Hola Ayudas. Sugerencias, errores o colaboraciones.',
     path: '/contacto',
+  })
+})
+
+registerRoute('/como-funciona', () => {
+  const html = renderComoFuncionaPage()
+  render(html)
+  updateMetaTags({
+    title: 'Como funciona Hola Ayudas',
+    description: 'Descubre como buscar ayudas y subvenciones publicas en España con Hola Ayudas. Busqueda inteligente, transparencia y estadisticas.',
+    path: '/como-funciona',
   })
 })
 

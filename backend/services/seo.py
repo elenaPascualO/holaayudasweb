@@ -44,6 +44,10 @@ _STATIC_PAGES: dict[str, dict[str, str]] = {
         "title": "Concesiones de subvenciones | Hola Ayudas",
         "description": "Listado de concesiones de subvenciones publicas otorgadas en España.",
     },
+    "/como-funciona": {
+        "title": "Como funciona Hola Ayudas | Hola Ayudas",
+        "description": "Descubre como buscar ayudas y subvenciones publicas en España con Hola Ayudas. Busqueda inteligente, transparencia y estadisticas.",
+    },
 }
 
 BASE_URL = "https://www.holaayudas.com"
@@ -302,14 +306,14 @@ def _build_grant_json_ld(grant: dict, bdns_code: str) -> list[dict]:
     return [service_schema, breadcrumb_schema]
 
 
-def get_index_html_with_meta(filename: str) -> str | None:
+def get_index_html_with_meta(filename: str) -> tuple[str, int] | None:
     """Return index.html with SEO meta tags injected based on the URL path.
 
     Args:
         filename: Request path (e.g., "ayuda/886707" or "").
 
     Returns:
-        HTML string with injected meta tags, or None if template not loaded.
+        Tuple of (HTML string, HTTP status code), or None if template not loaded.
     """
     if not _index_template:
         return None
@@ -321,7 +325,11 @@ def get_index_html_with_meta(filename: str) -> str | None:
     grant_match = re.match(r"^/ayuda/(\d+)$", path)
     if grant_match:
         bdns_code = grant_match.group(1)
-        grant = get_convocatoria_detail_local(bdns_code)
+        try:
+            grant = get_convocatoria_detail_local(bdns_code)
+        except Exception:
+            logger.exception("Failed to fetch grant %s from local DB", bdns_code)
+            grant = None
         if grant:
             organo = grant.get("organo") or {}
             org_name = " - ".join(
@@ -353,17 +361,22 @@ def get_index_html_with_meta(filename: str) -> str | None:
             body_html = _build_grant_body_html(grant, bdns_code)
             html = _inject_body_content(html, body_html)
 
-            return html
+            return html, 200
 
-        # Grant not found in local DB — still set basic meta
-        title = f"Ayuda {bdns_code} | Hola Ayudas"
+        # Grant not found in local DB — return 404 with noindex so Google
+        # stops wasting crawl budget on non-existent pages.
+        title = f"Ayuda no encontrada | Hola Ayudas"
         url = f"{BASE_URL}/ayuda/{bdns_code}"
         html = _replace_title(html, title)
+        html = _replace_meta(html, "name", "description", "Esta ayuda no se encuentra en nuestra base de datos.")
+        html = _replace_meta(html, "name", "robots", "noindex")
         html = _replace_meta(html, "property", "og:title", title)
         html = _replace_meta(html, "property", "og:url", url)
         html = _replace_meta(html, "name", "twitter:title", title)
         html = _replace_canonical(html, url)
-        return html
+        body_html = f"<h1>Ayuda no encontrada</h1><p>La ayuda con codigo BDNS {_esc(bdns_code)} no se encuentra en nuestra base de datos.</p>"
+        html = _inject_body_content(html, body_html)
+        return html, 404
 
     # Static pages
     # Normalize path: strip trailing slash for lookup (except root)
@@ -397,4 +410,4 @@ def get_index_html_with_meta(filename: str) -> str | None:
         html = _replace_canonical(html, url)
         html = _replace_meta(html, "property", "og:url", url)
 
-    return html
+    return html, 200

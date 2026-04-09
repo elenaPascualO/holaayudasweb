@@ -190,8 +190,9 @@ if frontend_dist.exists():
             return FileResponse(file_path)
 
         # Inject SEO meta tags for crawlers and social media previews
-        html = get_index_html_with_meta(filename)
-        if html:
-            return HTMLResponse(html)
+        result = get_index_html_with_meta(filename)
+        if result:
+            html, status_code = result
+            return HTMLResponse(html, status_code=status_code)
 
         return FileResponse(frontend_dist / "index.html")

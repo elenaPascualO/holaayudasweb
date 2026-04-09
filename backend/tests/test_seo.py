@@ -1,5 +1,7 @@
 """Tests for server-side SEO body injection (seo.py)."""
 
+from unittest.mock import patch
+
 import pytest
 
 from backend.services.seo import (
@@ -8,6 +10,7 @@ from backend.services.seo import (
     _format_currency_es,
     _format_date_es,
     _inject_body_content,
+    get_index_html_with_meta,
 )
 
 
@@ -199,3 +202,89 @@ class TestBuildGrantBodyHtml:
         html = _build_grant_body_html(grant, "123")
         # Should not have an empty <p></p> for organism
         assert "<p></p>" not in html
+
+
+# ---------------------------------------------------------------------------
+# get_index_html_with_meta — status codes & error handling
+# ---------------------------------------------------------------------------
+
+# Minimal HTML template matching the structure of the real index.html
+_FAKE_TEMPLATE = (
+    "<!DOCTYPE html><html><head>"
+    '<title>Hola Ayudas</title>'
+    '<meta name="description" content="default">'
+    '<meta name="robots" content="index, follow">'
+    '<link rel="canonical" href="https://www.holaayudas.com/">'
+    '<meta property="og:title" content="default">'
+    '<meta property="og:description" content="default">'
+    '<meta property="og:url" content="https://www.holaayudas.com/">'
+    '<meta name="twitter:title" content="default">'
+    '<meta name="twitter:description" content="default">'
+    "</head><body>"
+    '<div id="app"><h1>Hola Ayudas</h1></div>'
+    "</body></html>"
+)
+
+
+class TestGetIndexHtmlWithMetaStatusCodes:
+    """Tests for HTTP status codes and error handling in get_index_html_with_meta."""
+
+    def setup_method(self):
+        """Load fake template into module-level variable."""
+        import backend.services.seo as seo_mod
+        self._original = seo_mod._index_template
+        seo_mod._index_template = _FAKE_TEMPLATE
+
+    def teardown_method(self):
+        import backend.services.seo as seo_mod
+        seo_mod._index_template = self._original
+
+    def test_returns_none_when_no_template(self):
+        import backend.services.seo as seo_mod
+        seo_mod._index_template = ""
+        assert get_index_html_with_meta("ayuda/123") is None
+
+    def test_grant_found_returns_200(self):
+        grant = _make_grant()
+        with patch("backend.services.seo.get_convocatoria_detail_local", return_value=grant):
+            result = get_index_html_with_meta("ayuda/123456")
+        assert result is not None
+        html, status = result
+        assert status == 200
+        assert "Subvenciones para PYMES" in html
+
+    def test_grant_not_found_returns_404(self):
+        with patch("backend.services.seo.get_convocatoria_detail_local", return_value=None):
+            result = get_index_html_with_meta("ayuda/999999")
+        assert result is not None
+        html, status = result
+        assert status == 404
+        assert "noindex" in html
+        assert "Ayuda no encontrada" in html
+
+    def test_grant_not_found_body_contains_bdns_code(self):
+        with patch("backend.services.seo.get_convocatoria_detail_local", return_value=None):
+            html, _ = get_index_html_with_meta("ayuda/777777")
+        assert "777777" in html
+
+    def test_db_exception_returns_404(self):
+        """DB errors should be caught and treated as not-found, not crash with 5xx."""
+        with patch("backend.services.seo.get_convocatoria_detail_local", side_effect=Exception("DB locked")):
+            result = get_index_html_with_meta("ayuda/123456")
+        assert result is not None
+        html, status = result
+        assert status == 404
+        assert "noindex" in html
+
+    def test_static_page_returns_200(self):
+        result = get_index_html_with_meta("")
+        assert result is not None
+        html, status = result
+        assert status == 200
+        assert "Hola Ayudas" in html
+
+    def test_unknown_route_returns_200(self):
+        result = get_index_html_with_meta("unknown/path")
+        assert result is not None
+        html, status = result
+        assert status == 200

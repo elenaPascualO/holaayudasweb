@@ -1,11 +1,12 @@
 """SEO routes: segmented dynamic sitemap (open/closed grants by year)."""
 
+import gzip
 import logging
 import math
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from backend.config import SITE_BASE_URL
@@ -37,19 +38,22 @@ _STATIC_PAGES = [
     {"loc": "/estadisticas", "changefreq": "weekly", "priority": "0.7"},
     {"loc": "/beneficiarios", "changefreq": "weekly", "priority": "0.7"},
     {"loc": "/contacto", "changefreq": "monthly", "priority": "0.3"},
+    {"loc": "/como-funciona", "changefreq": "monthly", "priority": "0.4"},
 ]
 
 # Regex for closed segment: "2025" or "2025-2"
 _CLOSED_SEGMENT_RE = re.compile(r"^(\d{4})(?:-(\d+))?$")
 
 
-def _xml_response(content: str, cache_max_age: int = 86400) -> Response:
-    """Return an XML response with proper content type and cache header."""
-    return Response(
-        content=content,
-        media_type="application/xml",
-        headers={"Cache-Control": f"public, max-age={cache_max_age}"},
-    )
+def _xml_response(content: str, cache_max_age: int = 86400, request: Request | None = None) -> Response:
+    """Return an XML response, gzip-compressed only if the client accepts it."""
+    headers = {"Cache-Control": f"public, max-age={cache_max_age}"}
+    accept_encoding = (request.headers.get("accept-encoding", "") if request else "")
+    if "gzip" in accept_encoding:
+        compressed = gzip.compress(content.encode("utf-8"))
+        headers["Content-Encoding"] = "gzip"
+        return Response(content=compressed, media_type="application/xml", headers=headers)
+    return Response(content=content, media_type="application/xml", headers=headers)
 
 
 def _build_urlset(entries: list[dict], changefreq: str, priority: str) -> str:
@@ -102,11 +106,11 @@ def invalidate_sitemap_cache() -> None:
 
 
 @router.get("/sitemap.xml")
-async def sitemap_index() -> Response:
+async def sitemap_index(request: Request) -> Response:
     """Sitemap index listing static + open batches + closed-by-year sitemaps."""
     cached = _sitemap_cache.get("sitemap-index")
     if cached:
-        return _xml_response(cached, cache_max_age=_TTL_INDEX)
+        return _xml_response(cached, cache_max_age=_TTL_INDEX, request=request)
 
     open_count = get_sitemap_open_count()
     open_max_updated = get_sitemap_open_max_updated()
@@ -163,15 +167,15 @@ async def sitemap_index() -> Response:
         len(closed_years),
         open_count + sum(y["count"] for y in closed_years),
     )
-    return _xml_response(xml, cache_max_age=_TTL_INDEX)
+    return _xml_response(xml, cache_max_age=_TTL_INDEX, request=request)
 
 
 @router.get("/sitemap-static.xml")
-async def sitemap_static() -> Response:
+async def sitemap_static(request: Request) -> Response:
     """Sitemap for static pages."""
     cached = _sitemap_cache.get("sitemap-static")
     if cached:
-        return _xml_response(cached, cache_max_age=_TTL_STATIC)
+        return _xml_response(cached, cache_max_age=_TTL_STATIC, request=request)
 
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -187,51 +191,51 @@ async def sitemap_static() -> Response:
 
     xml = "\n".join(lines)
     _sitemap_cache.set("sitemap-static", xml, _TTL_STATIC)
-    return _xml_response(xml, cache_max_age=_TTL_STATIC)
+    return _xml_response(xml, cache_max_age=_TTL_STATIC, request=request)
 
 
 @router.get("/sitemap-grants-open-{page}.xml")
-async def sitemap_grants_open(page: int) -> Response:
+async def sitemap_grants_open(page: int, request: Request) -> Response:
     """Paginated sitemap for open grant detail pages.
 
     Args:
         page: 1-indexed page number.
     """
     if page < 1:
-        return _xml_response(_empty_urlset())
+        return _xml_response(_empty_urlset(), request=request)
 
     cache_key = f"sitemap-grants-open-{page}"
     cached = _sitemap_cache.get(cache_key)
     if cached:
-        return _xml_response(cached, cache_max_age=_TTL_OPEN)
+        return _xml_response(cached, cache_max_age=_TTL_OPEN, request=request)
 
     entries = get_sitemap_open_entries(page - 1, _GRANTS_PER_SITEMAP)
     xml = _build_urlset(entries, changefreq="weekly", priority="0.8")
     _sitemap_cache.set(cache_key, xml, _TTL_OPEN)
-    return _xml_response(xml, cache_max_age=_TTL_OPEN)
+    return _xml_response(xml, cache_max_age=_TTL_OPEN, request=request)
 
 
 @router.get("/sitemap-grants-closed-{segment}.xml")
-async def sitemap_grants_closed(segment: str) -> Response:
+async def sitemap_grants_closed(segment: str, request: Request) -> Response:
     """Sitemap for closed grants of a specific year (with optional overflow page).
 
     Segment format: "2025" (page 1) or "2025-2" (page 2 of year 2025).
     """
     match = _CLOSED_SEGMENT_RE.match(segment)
     if not match:
-        return _xml_response(_empty_urlset())
+        return _xml_response(_empty_urlset(), request=request)
 
     year = match.group(1)
     page = int(match.group(2)) if match.group(2) else 1
     if page < 1:
-        return _xml_response(_empty_urlset())
+        return _xml_response(_empty_urlset(), request=request)
 
     cache_key = f"sitemap-grants-closed-{segment}"
     cached = _sitemap_cache.get(cache_key)
     if cached:
         current_year = str(datetime.now(timezone.utc).year)
         ttl = _TTL_CLOSED_CURRENT_YEAR if year == current_year else _TTL_CLOSED_PAST
-        return _xml_response(cached, cache_max_age=ttl)
+        return _xml_response(cached, cache_max_age=ttl, request=request)
 
     entries = get_sitemap_closed_entries(year, page - 1, _GRANTS_PER_SITEMAP)
 
@@ -243,4 +247,4 @@ async def sitemap_grants_closed(segment: str) -> Response:
 
     xml = _build_urlset(entries, changefreq=changefreq, priority=priority)
     _sitemap_cache.set(cache_key, xml, ttl)
-    return _xml_response(xml, cache_max_age=ttl)
+    return _xml_response(xml, cache_max_age=ttl, request=request)

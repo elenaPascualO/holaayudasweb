@@ -21,6 +21,10 @@ export function createHeader() {
              class="text-sm font-medium px-3 py-1 rounded-full bg-primary/5 text-primary hover:bg-primary/10 transition-colors no-underline">
             Estadísticas
           </a>
+          <a href="/como-funciona" data-link
+             class="text-sm font-medium px-3 py-1 rounded-full text-gray-500 hover:bg-gray-100 transition-colors no-underline">
+            Ayuda
+          </a>
           <a href="/contacto" data-link
              class="text-sm font-medium px-3 py-1 rounded-full text-gray-500 hover:bg-gray-100 transition-colors no-underline">
             Contacto
@@ -45,6 +49,10 @@ export function createHeader() {
           <a href="/estadisticas" data-link
              class="text-sm font-medium px-3 py-2 rounded-lg bg-primary/5 text-primary hover:bg-primary/10 transition-colors no-underline">
             Estadísticas
+          </a>
+          <a href="/como-funciona" data-link
+             class="text-sm font-medium px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors no-underline">
+            Ayuda
           </a>
           <a href="/contacto" data-link
              class="text-sm font-medium px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors no-underline">
