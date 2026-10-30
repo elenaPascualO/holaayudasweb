@@ -1,5 +1,18 @@
+# Herramientas SEO comerciales, monitorización y buscadores sin audiencia en España:
+# no aportan visitas y suponen ~45% de las peticiones (ver doc/tasks/robots-crawlers.md)
+User-agent: AhrefsBot
+User-agent: SemrushBot
+User-agent: PetalBot
+User-agent: AwarioBot
+User-agent: MJ12bot
+User-agent: DotBot
+User-agent: BLEXBot
+User-agent: DataForSeoBot
+Disallow: /
+
+# Resto, incluidos buscadores y bots de IA
 User-agent: *
-Allow: /
 Disallow: /api/
+Allow: /
 
 Sitemap: https://www.holaayudas.com/sitemap.xml
