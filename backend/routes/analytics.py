@@ -1,5 +1,7 @@
 """Analytics routes — grant data insights for journalists and analysts."""
 
+import asyncio
+
 from fastapi import APIRouter, Query
 
 from backend.services.cache import cache
@@ -27,7 +29,7 @@ async def summary() -> dict:
     cached = cache.get(key)
     if cached is not None:
         return cached
-    data = analytics_summary()
+    data = await asyncio.to_thread(analytics_summary)
     cache.set(key, data, CACHE_TTL)
     return data
 
@@ -39,7 +41,7 @@ async def by_year() -> list[dict]:
     cached = cache.get(key)
     if cached is not None:
         return cached
-    data = analytics_by_year()
+    data = await asyncio.to_thread(analytics_by_year)
     cache.set(key, data, CACHE_TTL)
     return data
 
@@ -53,7 +55,7 @@ async def monthly_trend(
     cached = cache.get(key)
     if cached is not None:
         return cached
-    data = analytics_monthly_trend(year)
+    data = await asyncio.to_thread(analytics_monthly_trend, year)
     cache.set(key, data, CACHE_TTL)
     return data
 
@@ -69,7 +71,7 @@ async def by_theme(
     cached = cache.get(key)
     if cached is not None:
         return cached
-    data = analytics_by_theme(yearFrom, yearTo, limit)
+    data = await asyncio.to_thread(analytics_by_theme, yearFrom, yearTo, limit)
     cache.set(key, data, CACHE_TTL)
     return data
 
@@ -85,7 +87,7 @@ async def by_region(
     cached = cache.get(key)
     if cached is not None:
         return cached
-    data = analytics_by_region(yearFrom, yearTo, limit)
+    data = await asyncio.to_thread(analytics_by_region, yearFrom, yearTo, limit)
     cache.set(key, data, CACHE_TTL)
     return data
 
@@ -101,7 +103,7 @@ async def top_organs(
     cached = cache.get(key)
     if cached is not None:
         return cached
-    data = analytics_top_organs(yearFrom, yearTo, limit)
+    data = await asyncio.to_thread(analytics_top_organs, yearFrom, yearTo, limit)
     cache.set(key, data, CACHE_TTL)
     return data
 
@@ -113,7 +115,7 @@ async def status() -> dict:
     cached = cache.get(key)
     if cached is not None:
         return cached
-    data = analytics_status()
+    data = await asyncio.to_thread(analytics_status)
     cache.set(key, data, CACHE_TTL)
     return data
 

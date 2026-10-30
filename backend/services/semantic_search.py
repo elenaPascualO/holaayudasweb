@@ -1,5 +1,6 @@
 """Hybrid search: FTS5 keyword search + FAISS vector search + RRF fusion."""
 
+import asyncio
 import logging
 
 import numpy as np
@@ -126,7 +127,7 @@ async def semantic_search(
         return _empty_response(top_k)
 
     # Step 1: FTS5 keyword search
-    fts_results = search_fts(query, limit=fts_candidates)
+    fts_results = await asyncio.to_thread(search_fts, query, limit=fts_candidates)
     fts_ranked_ids = [r["id"] for r in fts_results]
     fts_by_id = {r["id"]: r for r in fts_results}
 
@@ -135,7 +136,7 @@ async def semantic_search(
     if faiss_index.is_ready():
         query_vec = await _embed_query(query)
         if query_vec is not None:
-            faiss_hits = faiss_index.search(query_vec, k=faiss_candidates)
+            faiss_hits = await asyncio.to_thread(faiss_index.search, query_vec, k=faiss_candidates)
             faiss_ranked_ids = [
                 doc_id for doc_id, score in faiss_hits
                 if score >= similarity_threshold
@@ -160,7 +161,7 @@ async def semantic_search(
         if doc_id not in fts_by_id
     ]
     if faiss_only_ids:
-        extra = get_convocatorias_by_ids(faiss_only_ids)
+        extra = await asyncio.to_thread(get_convocatorias_by_ids, faiss_only_ids)
         fts_by_id.update(extra)
 
     # Step 5: Build result list with RRF scores
@@ -268,7 +269,7 @@ async def keyword_trend(
         }
 
     # Step 1: FTS5 keyword matches
-    fts_candidates = search_fts(query, limit=fts_limit)
+    fts_candidates = await asyncio.to_thread(search_fts, query, limit=fts_limit)
     fts_ids = {c["id"] for c in fts_candidates}
 
     # Step 2: FAISS semantic matches (if ready)
@@ -276,7 +277,7 @@ async def keyword_trend(
     if faiss_index.is_ready():
         query_vec = await _embed_query(query)
         if query_vec is not None:
-            faiss_hits = faiss_index.search(query_vec, k=faiss_limit)
+            faiss_hits = await asyncio.to_thread(faiss_index.search, query_vec, k=faiss_limit)
             faiss_ids = {
                 doc_id for doc_id, score in faiss_hits
                 if score >= similarity_threshold
@@ -286,13 +287,15 @@ async def keyword_trend(
     matched_ids = list(fts_ids | faiss_ids)
 
     # Step 4: Aggregate by year
-    by_year = aggregate_by_year_for_ids(matched_ids) if matched_ids else []
+    by_year = (
+        await asyncio.to_thread(aggregate_by_year_for_ids, matched_ids) if matched_ids else []
+    )
 
     # Step 5: Search beneficiarios
     beneficiarios_result = None
     try:
-        if has_beneficiarios_data():
-            benef_data = search_beneficiarios_trend(query)
+        if await asyncio.to_thread(has_beneficiarios_data):
+            benef_data = await asyncio.to_thread(search_beneficiarios_trend, query)
             if benef_data["total_matches"] > 0:
                 beneficiarios_result = benef_data
     except Exception as e:

@@ -1,5 +1,6 @@
 """Grant (convocatoria) routes."""
 
+import asyncio
 import logging
 import time
 
@@ -214,7 +215,7 @@ async def grant_detail(bdns_code: str) -> dict:
     """
     # Try local SQLite first
     try:
-        local = get_convocatoria_detail_local(bdns_code)
+        local = await asyncio.to_thread(get_convocatoria_detail_local, bdns_code)
         if local is not None:
             return local
     except Exception:

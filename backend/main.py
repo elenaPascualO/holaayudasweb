@@ -200,6 +200,22 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "holaayudas-api"}
 
 
+async def render_page_with_meta(filename: str) -> HTMLResponse | None:
+    """Build index.html with SEO meta/body for a path, off the event loop.
+
+    Grant pages (/ayuda/{code}) read the grant from SQLite, so this runs in a
+    worker thread to avoid blocking other requests.
+
+    Returns:
+        HTMLResponse, or None if the path has no SEO configuration.
+    """
+    result = await asyncio.to_thread(get_index_html_with_meta, filename)
+    if not result:
+        return None
+    html, status_code = result
+    return HTMLResponse(html, status_code=status_code)
+
+
 # Serve frontend static files and SPA fallback (must be last, so API routes take priority)
 if frontend_dist.exists():
     # Mount static assets (JS, CSS, images, etc.)
@@ -214,9 +230,8 @@ if frontend_dist.exists():
             return FileResponse(file_path)
 
         # Inject SEO meta tags for crawlers and social media previews
-        result = get_index_html_with_meta(filename)
-        if result:
-            html, status_code = result
-            return HTMLResponse(html, status_code=status_code)
+        page = await render_page_with_meta(filename)
+        if page is not None:
+            return page
 
         return FileResponse(frontend_dist / "index.html")
