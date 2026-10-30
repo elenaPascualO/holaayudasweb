@@ -59,7 +59,7 @@ Crear la mejor experiencia de usuario para buscar ayudas publicas en España, re
 ### Infraestructura
 
 - [x] Dockerfile (multi-stage: Bun frontend + Python backend)
-- [x] Configuracion railway.json
+- [x] Despliegue con Coolify en un servidor Hetzner
 - [x] Configuracion proxy en Vite para desarrollo
 
 ### Criterios de "Hecho" (Fase 0)

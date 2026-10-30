@@ -9,7 +9,6 @@ data
 doc
 *.md
 !pyproject.toml
-railway.json
 banner.html
 holadatos-banner-*
 mockup-*

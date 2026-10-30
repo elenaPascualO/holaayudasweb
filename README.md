@@ -21,7 +21,7 @@ Los datos provienen de la API publica de la **BDNS** (Base de Datos Nacional de 
 | Runtime frontend | Bun |
 | Package manager backend | uv |
 | Testing | Vitest + jsdom (frontend) / pytest (backend) |
-| Deploy | Railway (Docker multi-stage) |
+| Deploy | Coolify en un servidor Hetzner (Docker multi-stage) |
 
 ## Requisitos
 

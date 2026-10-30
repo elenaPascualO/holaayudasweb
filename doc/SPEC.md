@@ -191,7 +191,7 @@ Campos de respuesta por item:
 | Base de datos | SQLite (FTS5 + tabla separada para embeddings) |
 | Embeddings | OpenAI text-embedding-3-small (1536 dims), almacenados en `conv_embeddings` |
 | Vector ops | numpy (cosine similarity) |
-| Deploy | Railway |
+| Deploy | Coolify en un servidor Hetzner |
 
 ### 3.3 API del Proxy Backend
 
@@ -453,7 +453,7 @@ CORS_ORIGINS = [
 ## 7. Despliegue
 
 ### 7.1 Plataforma
-Railway (igual que ParseWiz y FacturaView)
+Coolify en un servidor Hetzner (`ubuntu-8gb-hel1-1`: 8 GB de RAM, 4 vCPU). Push a `master` despliega automáticamente. Operación detallada en `doc/OPERACIONES.md`.
 
 ### 7.2 Build
 Dockerfile con multi-stage build:

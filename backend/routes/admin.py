@@ -160,7 +160,7 @@ async def trigger_sync(
 ) -> dict:
     """Trigger beneficiarios sync in background and return immediately.
 
-    Protected by a Bearer token. Intended to be called from a Railway cron job.
+    Protected by a Bearer token. Intended to be called from a scheduled task (cron).
     Use GET /api/admin/sync/beneficiarios/status to check progress.
     """
     global _beneficiarios_sync_state, _beneficiarios_sync_task

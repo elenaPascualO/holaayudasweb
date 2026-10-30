@@ -35,7 +35,6 @@ Excepciones (no requieren spec): erratas, cambios solo de documentación y arreg
 | Lint | ruff (`line-length = 100`) |
 | Deploy | Un solo contenedor Docker en **Coolify** (Hetzner). Puerto 8000. Datos en volumen `/app/data` |
 
-> El `README.md` y algunos docs antiguos mencionan Railway: está desactualizado, ahora es Coolify.
 
 ## Estructura
 

@@ -2,7 +2,7 @@
 
 ## Optimizaciones SQLite y Queries
 
-Diagnostico: la homepage (`/api/convocatorias/ultimas`) tarda 1-11s en Railway porque los volumenes persistentes usan almacenamiento en red (latencia alta en I/O). Las queries hacen COUNT(*) sobre 616K filas en cada request sin cache. Implementar antes o despues de migrar a Hetzner+Coolify.
+Diagnostico: la homepage (`/api/convocatorias/ultimas`) tardaba 1-11s en el hosting anterior porque los volumenes persistentes usaban almacenamiento en red (latencia alta en I/O). Las queries hacen COUNT(*) sobre 616K filas en cada request sin cache.
 
 ### 1. Cache de `has_convocatorias_data()` en memoria
 **Archivo:** `backend/services/convocatorias_db.py`
@@ -71,7 +71,7 @@ Cambio 7 → depende de cambios 1 y 5 (cache keys y flag)
 
 ## Despliegue Fase 3: Replica + Semantica + Analytics
 
-Pasos para activar la Fase 3 en produccion (Railway):
+Pasos para activar la Fase 3 en produccion (Coolify):
 
 - [ ] Ejecutar sync inicial via endpoint (no requiere esperar, corre en background):
   ```bash
@@ -83,8 +83,8 @@ Pasos para activar la Fase 3 en produccion (Railway):
   curl "https://holaayudas.com/api/admin/sync/convocatorias/status" \
     -H "Authorization: Bearer $ADMIN_SECRET"
   ```
-- [ ] Configurar `OPENAI_API_KEY` en Railway (env var)
-- [ ] Activar cron jobs en Railway:
+- [ ] Configurar `OPENAI_API_KEY` en Coolify (Environment Variables)
+- [ ] Activar tareas programadas en Coolify (Scheduled Tasks):
   - `POST /api/admin/sync/convocatorias?mode=daily` — diario a las 07:00 UTC
   - `POST /api/admin/sync/convocatorias?mode=backfill-detail` — diario hasta completar
   - `POST /api/admin/sync/convocatorias?mode=backfill-embeddings` — diario hasta completar
@@ -129,7 +129,7 @@ Archivos modificados:
 
 ### Sync en background con endpoint de estado — COMPLETADA
 
-El endpoint `POST /api/admin/sync/convocatorias` ahora lanza el sync como tarea async en background y retorna inmediatamente `{"status": "started"}`. Esto evita que Railway corte la peticion HTTP por timeout (~5 min).
+El endpoint `POST /api/admin/sync/convocatorias` ahora lanza el sync como tarea async en background y retorna inmediatamente `{"status": "started"}`. Esto evita que el proxy corte la peticion HTTP por timeout en syncs largos.
 
 - `sync_convocatorias.py`: `progress_callback` opcional en todas las funciones de sync
 - `admin.py`: `asyncio.create_task()` + estado global `_sync_state` (idle/running/completed/failed/cancelled)

@@ -31,7 +31,7 @@ Este plan evalúa la evolución hacia un **producto con datos propios y intelige
 |---|---|
 | **Qué es** | Base de datos propia de convocatorias, enriquecida con etiquetas IA, con búsqueda semántica y alertas inteligentes |
 | **Esfuerzo** | 3-6 semanas (incremental, valor desde la semana 1) |
-| **Coste operativo** | ~$15-25/mes (Railway Pro + email service + API IA incremental) |
+| **Coste operativo** | Servidor Hetzner existente + email service + API IA incremental |
 | **RGPD** | Mínimo si no hay cuentas de usuario; medio si hay alertas email |
 | **Valor para el usuario** | Muy alto — búsqueda en lenguaje natural, resúmenes, alertas inteligentes |
 | **Valor diferencial** | Enorme — infosubvenciones nunca tendrá esto |
@@ -66,7 +66,7 @@ Este plan evalúa la evolución hacia un **producto con datos propios y intelige
 │  ├── semantic_search.py   (embeddings + similitud)      │
 │  └── alerts_service.py    (check + email)               │
 │                                                          │
-│  Cron jobs (Railway):                                    │
+│  Cron jobs (Coolify Scheduled Tasks):                    │
 │  ├── sync_convocatorias   (diario, ~10min)              │
 │  ├── enrich_new           (diario, tras sync)           │
 │  └── send_alerts          (diario/semanal)              │
@@ -238,7 +238,7 @@ Funciones principales:
 #### 1.5 Cron job
 
 Añadir endpoint admin: `POST /api/admin/sync-convocatorias`
-Railway cron: ejecutar diariamente a las 07:00 UTC (tras actualización BDNS ~06:30 CET)
+Tarea programada en Coolify: ejecutar diariamente a las 07:00 UTC (tras actualización BDNS ~06:30 CET)
 
 **Archivos a crear/modificar**:
 - `backend/services/convocatorias_db.py` (nuevo, ~200 líneas)
@@ -359,7 +359,7 @@ Administración Local
 - 1536 dims × 4 bytes = 6KB/embedding × 610K = **~3.6GB** de embeddings
 - Alternativa: reducir a 512 dims con `dimensions` param → **~1.2GB**
 
-\* Local requiere ~500MB RAM extra para el modelo, viable en Railway Pro.
+\* Local requiere ~500MB RAM extra para el modelo, viable en el servidor Hetzner (8 GB).
 
 #### 2.4 Costes de IA detallados
 
@@ -386,7 +386,7 @@ Administración Local
 
 ```python
 # Opción A: En memoria (si caben los embeddings en RAM)
-# 610K × 512 dims × 4 bytes = 1.2GB — demasiado para Railway starter
+# 610K × 512 dims × 4 bytes = 1.2GB — demasiado para un servidor pequeño
 # Con 50K convocatorias abiertas/recientes: ~100MB — factible
 
 # Opción B: sqlite-vec extension
@@ -543,7 +543,7 @@ async def send_alert_digest(email: str, new_grants: list[dict], unsubscribe_toke
 
 ```python
 # POST /api/admin/send-alerts (protegido con ADMIN_SECRET)
-# Railway cron: diario a las 08:00 UTC
+# Tarea programada en Coolify: diario a las 08:00 UTC
 
 async def check_and_send_alerts():
     subscriptions = get_active_verified_subscriptions()
@@ -634,10 +634,10 @@ Solo si la Fase 1-4 tiene tracción. Añade:
 
 | Concepto | Coste/mes |
 |----------|-----------|
-| Railway Pro (ya existente) | $5 |
+| Servidor Hetzner con Coolify (ya existente) | Coste fijo del servidor |
 | Procesamiento IA incremental | ~$0.10 |
 | Resend free tier (emails) | $0 |
-| **Total** | **~$5.10/mes** (con plan actual Railway) |
+| **Total** | **~$0.10/mes** además del servidor |
 
 ### Costes one-time IA
 
@@ -663,7 +663,7 @@ dependencies = [
 ]
 ```
 
-No se necesita PostgreSQL, Redis ni Celery. SQLite + Railway cron es suficiente para el volumen esperado (<1000 suscriptores).
+No se necesita PostgreSQL, Redis ni Celery. SQLite + tareas programadas de Coolify es suficiente para el volumen esperado (<1000 suscriptores).
 
 ---
 
@@ -674,7 +674,7 @@ No se necesita PostgreSQL, Redis ni Celery. SQLite + Railway cron es suficiente 
 | BDNS bloquea scraping agresivo | Media | Alto | Semáforo de concurrencia (ya implementado), backoff exponencial, sync en horario bajo |
 | Calidad de clasificación IA baja | Baja | Medio | Validar manualmente muestra de 100 convocatorias antes de batch completo; iterar prompt |
 | Embeddings no capturan bien español administrativo | Media | Medio | Hybrid search (FTS + semántica); probar modelos multilingües |
-| Railway volume se pierde en redeploy | Baja | Alto | Railway volumes son persistentes; backup periódico a S3/R2 |
+| Volumen de datos se pierde en redeploy | Baja | Alto | El volumen `/app/data` de Coolify es persistente; backup periódico a S3/R2 |
 | Coste IA escala si hay muchas más convocatorias | Baja | Bajo | El crecimiento es ~50-100/día, coste marginal <$0.01/día |
 | RGPD con emails de alertas | Baja | Medio | Double opt-in, enlace de baja, texto legal, no compartir datos |
 

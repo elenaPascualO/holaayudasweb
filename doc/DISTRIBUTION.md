@@ -51,36 +51,36 @@ Hola Ayudas tiene un modelo de distribucion diferente a ParseWiz o FacturaView. 
 
 ---
 
-## Despliegue en Railway
+## Despliegue en Coolify (Hetzner)
+
+La app se despliega con **Coolify** en un servidor **Hetzner** (`ubuntu-8gb-hel1-1`: 8 GB de RAM, 4 vCPU). Un push a `master` despliega automáticamente (webhook de GitHub). La operación completa (variables, syncs, FAISS, sitemaps, resolución de problemas) está en `doc/OPERACIONES.md`.
 
 ### Prerrequisitos
 - Repositorio en GitHub
-- Cuenta de Railway
+- Servidor Hetzner con Coolify instalado
 
 ### Archivos de Despliegue
 
 | Archivo | Proposito |
 |---------|-----------|
 | `Dockerfile` | Build multi-stage (Bun frontend + Python backend) |
-| `railway.json` | Configuracion de Railway |
 
-### Variables de Entorno
+### Configuracion en Coolify
 
-| Variable | Valor | Requerida |
-|----------|-------|-----------|
-| `ENVIRONMENT` | `production` | Si |
-| `ALLOWED_ORIGINS` | `https://www.holaayudas.com` | Si |
-| `BDNS_BASE_URL` | `https://www.infosubvenciones.es/bdnstrans/api` | No (default) |
-| `DISCORD_WEBHOOK_URL` | `https://discord.com/api/webhooks/...` | Si (para feedback) |
+- **Build pack:** Dockerfile. Puerto expuesto: `8000`.
+- **Healthcheck:** `GET /api/health`.
+- **Volumen persistente** montado en `/app/data` (bases SQLite, índice FAISS y sitemaps pregenerados).
+- **Variables de entorno:** ver la tabla completa en `doc/OPERACIONES.md` §2.
 
 ### Configuracion de Dominio Personalizado
 
-#### Lado Railway
-1. Settings > Networking > Custom Domain
-2. Añadir `www.holaayudas.com`
+#### Lado Coolify
+- En el recurso, campo **Domains**: `https://www.holaayudas.com,https://holaayudas.com`. Coolify gestiona los certificados TLS.
 
 #### Lado DNS
 | Tipo | Host | Valor |
 |------|------|-------|
-| CNAME | `www.holaayudas.com` | `[dominio-railway].up.railway.app` |
-| Redirect 301 | `holaayudas.com` | `https://www.holaayudas.com` |
+| A | `holaayudas.com` | IP del servidor Hetzner |
+| A | `www.holaayudas.com` | IP del servidor Hetzner |
+
+La redirección 301 de `holaayudas.com` a `https://www.holaayudas.com` la hace la propia app en producción (`WwwRedirectMiddleware` en `backend/main.py`).

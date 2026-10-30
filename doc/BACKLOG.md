@@ -40,5 +40,5 @@ Prioridad orientativa: **Alta** (afecta a usuarios, SEO o disponibilidad), **Med
 | Secretos como *build args* en Coolify | Media | `OPENAI_API_KEY`, `ADMIN_SECRET` y `SMTP_PASSWORD` tienen marcado "Available at Buildtime" y aparecen como build args (aviso `SecretsUsedInArgOrEnv`). Desmarcarlo en Coolify; no requiere código |
 | Límite de memoria del contenedor | Baja | `memory.max = max`: si la app se pasa de memoria, el OOM lo resuelve el kernel del servidor y puede afectar a otros servicios. Valorar un límite en Coolify (con margen para una construcción de FAISS) |
 | Borrar `idx_conv_sitemap` | Baja | Redundante con los índices de `sitemap-covering-index.md`. Borrarlo es irreversible y no aporta casi nada; revisar antes los planes de consulta |
-| README desactualizado | Baja | Menciona Railway como deploy (ahora Coolify), el puerto 8000 para desarrollo (Vite hace proxy a 8001) y una tabla de variables de entorno incompleta (la completa está en `doc/OPERACIONES.md`) |
+| README desactualizado | Baja | Indica el puerto 8000 para desarrollo (Vite hace proxy a 8001) y una tabla de variables de entorno incompleta (la completa está en `doc/OPERACIONES.md`) |
 | `CLAUDE.md` en `.gitignore` | Baja | No se versiona; `AGENTS.md` sí. Decidir si versionar los dos |
