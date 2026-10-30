@@ -53,7 +53,7 @@ Hola Ayudas tiene un modelo de distribucion diferente a ParseWiz o FacturaView. 
 
 ## Despliegue en Coolify (Hetzner)
 
-La app se despliega con **Coolify** en un servidor **Hetzner** (`ubuntu-8gb-hel1-1`: 8 GB de RAM, 4 vCPU). Un push a `master` despliega automáticamente (webhook de GitHub). La operación completa (variables, syncs, FAISS, sitemaps, resolución de problemas) está en `doc/OPERACIONES.md`.
+La app se despliega con **Coolify** en un servidor **Hetzner** (`ubuntu-8gb-hel1-1`: 8 GB de RAM, 4 vCPU). **El despliegue es manual**: un push a `master` no despliega (el webhook de despliegue automático está desactivado desde el 30-oct-2026); hay que pulsar **Deploy** en Coolify. La operación completa (variables, syncs, FAISS, sitemaps, resolución de problemas) está en `doc/OPERACIONES.md`.
 
 ### Prerrequisitos
 - Repositorio en GitHub

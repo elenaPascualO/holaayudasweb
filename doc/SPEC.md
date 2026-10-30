@@ -453,7 +453,7 @@ CORS_ORIGINS = [
 ## 7. Despliegue
 
 ### 7.1 Plataforma
-Coolify en un servidor Hetzner (`ubuntu-8gb-hel1-1`: 8 GB de RAM, 4 vCPU). Push a `master` despliega automáticamente. Operación detallada en `doc/OPERACIONES.md`.
+Coolify en un servidor Hetzner (`ubuntu-8gb-hel1-1`: 8 GB de RAM, 4 vCPU). Despliegue manual con el botón **Deploy** de Coolify (push a `master` no despliega). Operación detallada en `doc/OPERACIONES.md`.
 
 ### 7.2 Build
 Dockerfile con multi-stage build:

@@ -61,7 +61,7 @@ Tras cambiar cualquier variable hay que hacer **Redeploy** (el contenedor solo l
 
 ## 3. Despliegue
 
-1. Push a `master` → Coolify construye la imagen con el `Dockerfile` y despliega (o **Redeploy** manual).
+1. Push a `master` (**no despliega**: el despliegue automático está desactivado). En Coolify, pulsar **Deploy** (o **Redeploy**): construye la imagen con el `Dockerfile` y despliega.
 2. Al arrancar: se inicializan las BDs, se carga la plantilla SEO y **FAISS se carga desde disco en segundo plano** (segundos). Si no existe `/app/data/faiss.index`, se construye desde cero (más de 12 min, ~5 GB) y se guarda.
 3. Comprobar tras el deploy:
    - La web carga y la búsqueda funciona.

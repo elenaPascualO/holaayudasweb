@@ -33,7 +33,7 @@ Excepciones (no requieren spec): erratas, cambios solo de documentación y arreg
 | Gestores | `uv` (Python), `bun` (frontend) |
 | Tests | pytest + pytest-asyncio (`asyncio_mode = auto`), Vitest + jsdom |
 | Lint | ruff (`line-length = 100`) |
-| Deploy | Un solo contenedor Docker en **Coolify** (Hetzner). Puerto 8000. Datos en volumen `/app/data` |
+| Deploy | Un solo contenedor Docker en **Coolify** (Hetzner). Puerto 8000. Datos en volumen `/app/data`. **Despliegue manual** desde Coolify: un push a `master` no despliega |
 
 
 ## Estructura
