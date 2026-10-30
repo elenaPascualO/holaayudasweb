@@ -1,6 +1,6 @@
 # Índice FAISS persistido en disco con actualización incremental
 
-**Estado:** implementada (commit `f4d1f16`). Esta spec se escribió después de implementar; a partir de ahora las specs van antes del código (ver `AGENTS.md`).
+**Estado:** implementada (commit `f4d1f16`) y **verificada en producción** (30-oct-2026, pasos 1 y 2; el 3 queda para el próximo `daily`). Esta spec se escribió después de implementar; a partir de ahora las specs van antes del código (ver `AGENTS.md`).
 
 ## Contexto
 
@@ -126,10 +126,14 @@ Los tests existentes de `load_index_from_db`, búsqueda, `add_vectors` y entrena
   ```
   → `"ready": true, "total_vectors": 658926, "on_disk": true, "building": false`, y el archivo pesa unas decenas de MB.
 
+> **Resultado (30-oct-2026):** la construcción completa tardó **30 min** (11:59 → 12:29), no los ~12 min estimados: `Pass 1` 35 s, **entrenamiento 25 min**, `Pass 2` 4 min. Pico de RSS ~3,8–4,9 GB. `faiss/status` → `ready: true, total_vectors: 658926, on_disk: true`; `faiss.index` = 70 MB, `faiss.index.meta.json` = 201 B. Un benchmark local con datos aleatorios (50K × 1536, 4 hilos) reparte el entrenamiento en **OPQ 863 s (98,5 %)** + IVF/PQ 13 s: la rotación OPQ es el cuello de botella (candidata a spec propia).
+
 **2. Segundo arranque: la prueba clave.** Reinicia o vuelve a desplegar:
 - Logs: `FAISS index loaded from disk: 658926 vectors` **en segundos**, sin `Building FAISS index`.
 - `faiss/status` → `ready: true` casi de inmediato, y `built_at` igual que antes.
 - Memoria del proceso (comando de `/proc` del runbook): cientos de MB, no ~5 GB.
+
+> **Resultado (30-oct-2026, deploy `43a151f`):** `Application startup complete` a las 12:56:22,119 y `FAISS index loaded from disk: 658926 vectors (built 2026-10-30T12:29:08)` a las 12:56:22,238 → **~0,1 s**, sin `Building`. ✅
 
 **3. Actualización incremental:**
 ```sh
