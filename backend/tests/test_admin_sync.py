@@ -325,3 +325,66 @@ async def test_faiss_rebuild_skipped_while_building(client):
 
     assert response.json()["status"] == "skipped"
     mock_rebuild.assert_not_called()
+
+
+@pytest.fixture
+def mock_generate_sitemaps():
+    """Replace sitemap generation so tests never write sitemap files."""
+    from unittest.mock import MagicMock
+
+    mock = MagicMock(return_value={"status": "completed", "files": 1, "urls": 1})
+    with patch("backend.services.sitemaps.generate_all", mock):
+        yield mock
+
+
+async def test_sitemaps_regenerate_requires_token(client, mock_generate_sitemaps):
+    response = await client.post(
+        "/api/admin/sitemaps/regenerate", headers={"Authorization": "Bearer wrong"}
+    )
+    assert response.status_code == 401
+    mock_generate_sitemaps.assert_not_called()
+
+
+async def test_sitemaps_regenerate_starts_in_background(client, mock_generate_sitemaps):
+    response = await client.post("/api/admin/sitemaps/regenerate", headers=AUTH_HEADER)
+    await asyncio.sleep(0.1)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "started"
+    mock_generate_sitemaps.assert_called_once()
+
+
+async def test_sitemaps_regenerate_skipped_while_generating(client, mock_generate_sitemaps):
+    from backend.services import sitemaps
+
+    with sitemaps._gen_lock:
+        response = await client.post("/api/admin/sitemaps/regenerate", headers=AUTH_HEADER)
+
+    assert response.json()["status"] == "skipped"
+    mock_generate_sitemaps.assert_not_called()
+
+
+async def test_sitemaps_status_endpoint(client, mock_generate_sitemaps):
+    response = await client.get("/api/admin/sitemaps/status", headers=AUTH_HEADER)
+    assert response.status_code == 200
+    assert "generating" in response.json()
+    assert "generated_at" in response.json()
+
+
+@pytest.mark.parametrize("mode,expected_calls", [
+    ("daily", 1),
+    ("backfill-detail", 0),
+    ("backfill-embeddings", 0),
+])
+async def test_daily_sync_triggers_sitemap_regeneration(
+    client, mock_generate_sitemaps, mode, expected_calls
+):
+    async def fake_run_sync(mode, progress_callback=None):
+        return {"mode": mode}
+
+    with patch("backend.scripts.sync_convocatorias.run_sync", side_effect=fake_run_sync):
+        await client.post(f"/api/admin/sync/convocatorias?mode={mode}", headers=AUTH_HEADER)
+        await asyncio.sleep(0.2)
+
+    assert admin_module._sync_state["status"] == "completed"
+    assert mock_generate_sitemaps.call_count == expected_calls

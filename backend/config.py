@@ -71,6 +71,12 @@ FAISS_INDEX_PATH: str = os.getenv(
     str(Path(CONVOCATORIAS_DB_PATH).parent / "faiss.index"),
 )
 
+# Pregenerated sitemap files (next to the convocatorias DB by default)
+SITEMAPS_DIR: str = os.getenv(
+    "SITEMAPS_DIR",
+    str(Path(CONVOCATORIAS_DB_PATH).parent / "sitemaps"),
+)
+
 # OpenAI API key for embeddings and post generation
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 

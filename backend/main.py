@@ -71,7 +71,30 @@ async def lifespan(app: FastAPI):
 
         faiss_load_task = asyncio.create_task(_load_faiss())
 
+    # Pregenerate sitemaps in background if missing or older than 24h
+    # (routes build them on demand in a thread until the files exist)
+    sitemaps_task = None
+    if not os.environ.get("TESTING"):
+        try:
+            from backend.services import sitemaps
+        except ImportError:
+            from services import sitemaps
+
+        async def _generate_sitemaps():
+            try:
+                if await asyncio.to_thread(sitemaps.needs_regeneration):
+                    await asyncio.to_thread(sitemaps.generate_all)
+                else:
+                    logging.getLogger(__name__).info("Sitemaps are up to date — not regenerating")
+            except Exception as e:
+                logging.getLogger(__name__).error("Sitemap generation failed: %s", e)
+
+        sitemaps_task = asyncio.create_task(_generate_sitemaps())
+
     yield
+
+    if sitemaps_task and not sitemaps_task.done():
+        sitemaps_task.cancel()
 
     if faiss_load_task and not faiss_load_task.done():
         faiss_load_task.cancel()

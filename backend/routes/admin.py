@@ -28,6 +28,9 @@ _last_result_by_mode: dict[str, dict] = {}
 # FAISS rebuild task (kept referenced so it isn't garbage-collected)
 _faiss_rebuild_task: asyncio.Task | None = None
 
+# Sitemap generation task (kept referenced so it isn't garbage-collected)
+_sitemap_task: asyncio.Task | None = None
+
 
 def _validate_token(authorization: str) -> None:
     """Validate admin bearer token."""
@@ -69,6 +72,10 @@ async def _run_sync_background(mode: str) -> None:
 
         invalidate_sitemap_cache()
         invalidate_has_data_cache()
+
+        # Regenerate pregenerated sitemaps with the new data (own background task)
+        if mode == "daily":
+            _start_sitemap_generation()
 
         # Add newly embedded vectors to FAISS (incremental, no rebuild)
         if mode in ("daily", "backfill-embeddings") and not os.environ.get("TESTING"):
@@ -336,3 +343,60 @@ async def trigger_faiss_rebuild(
 
     _faiss_rebuild_task = asyncio.create_task(_run_faiss_rebuild_background())
     return {"status": "started"}
+
+
+async def _run_sitemap_generation_background() -> None:
+    """Regenerate all sitemap files in a worker thread."""
+    from backend.services import sitemaps
+
+    try:
+        result = await asyncio.to_thread(sitemaps.generate_all)
+        logger.info("Sitemap generation finished: %s", result)
+    except Exception as e:
+        logger.exception("Sitemap generation failed")
+
+        from backend.services.email_notify import send_sync_failure_email
+
+        await send_sync_failure_email("sitemaps", str(e))
+
+
+def _start_sitemap_generation() -> None:
+    """Launch sitemap regeneration as a background task."""
+    global _sitemap_task
+    _sitemap_task = asyncio.create_task(_run_sitemap_generation_background())
+
+
+@router.post("/sitemaps/regenerate")
+async def trigger_sitemaps_regeneration(
+    request: Request,
+    authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
+) -> dict:
+    """Regenerate all sitemap files in background.
+
+    Normally not needed: sitemaps regenerate after each daily sync and at
+    startup when older than 24h. Previous files keep being served meanwhile.
+
+    Use GET /api/admin/sitemaps/status to check progress.
+    """
+    admin_limiter.check(get_client_ip(request))
+    _validate_token(authorization)
+
+    from backend.services import sitemaps
+
+    if sitemaps.is_generating():
+        return {"status": "skipped", "reason": "Sitemap generation already in progress"}
+
+    _start_sitemap_generation()
+    return {"status": "started"}
+
+
+@router.get("/sitemaps/status")
+async def get_sitemaps_status(
+    authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
+) -> dict:
+    """Return sitemap generation status (generating, generated_at, files, urls)."""
+    _validate_token(authorization)
+
+    from backend.services import sitemaps
+
+    return await asyncio.to_thread(sitemaps.get_status)

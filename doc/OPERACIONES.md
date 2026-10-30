@@ -50,6 +50,7 @@ Tras cambiar cualquier variable hay que hacer **Redeploy** (el contenedor solo l
 | `POSTS_OPENAI_MODEL` | No | `gpt-4o` | Modelo para posts (`gpt-4o-mini` es más barato) |
 | `CONVOCATORIAS_DB_PATH` | No | `/app/data/convocatorias.db` | Ruta de la BD de convocatorias |
 | `FAISS_INDEX_PATH` | No | `faiss.index` junto a la BD de convocatorias | Índice FAISS guardado en disco. Debe estar en el volumen persistente |
+| `SITEMAPS_DIR` | No | `sitemaps/` junto a la BD de convocatorias | Sitemaps pregenerados (`.xml.gz`). Debe estar en el volumen persistente |
 | `BENEFICIARIOS_DB_PATH` | No | `/app/data/beneficiarios.db` | Ruta de la BD de beneficiarios |
 | `DISCORD_WEBHOOK_URL` | No | — | Notificaciones de feedback |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `ALERT_EMAIL_TO` | No | `SMTP_PORT=587` | Emails de alerta cuando falla un sync (hacen falta **todas**) |
@@ -101,6 +102,8 @@ Todos requieren la cabecera `Authorization: Bearer $ADMIN_SECRET`.
 | GET | `/api/admin/sync/beneficiarios/status` | Estado del sync de beneficiarios |
 | GET | `/api/admin/sync/beneficiarios/stats` | Totales por año |
 | GET | `/api/admin/faiss/status` | `ready`, `total_vectors`, `index_type`, `building`, `built_at`, `on_disk` |
+| POST | `/api/admin/sitemaps/regenerate` | Regenera todos los sitemaps en segundo plano (normalmente no hace falta, ver §6) |
+| GET | `/api/admin/sitemaps/status` | `generating`, `generated_at`, `files`, `urls`, `elapsed_seconds` |
 | POST | `/api/admin/faiss/rebuild` | Reentrena el índice desde cero y lo guarda (ocasional, ver §6) |
 | POST | `/api/admin/posts/generate?post_type=<tipo>` | Genera un post con OpenAI |
 | GET | `/api/admin/posts/generate/status` | Estado de la generación |
@@ -145,6 +148,16 @@ El sync diario debe estar programado (Coolify → **Scheduled Tasks**, o un cron
 | Semanal/mensual | `curl -s -X POST "http://localhost:8000/api/admin/sync/beneficiarios" -H "Authorization: Bearer $ADMIN_SECRET"` |
 
 > Verifica en Coolify qué tareas están realmente configuradas: no están definidas en el repo.
+
+### Sitemaps
+
+Los sitemaps (`/sitemap.xml` y los que lista) se **pregeneran** en `/app/data/sitemaps/` y se sirven desde disco en milisegundos. Generarlos lee ~600K filas y tarda; por eso nunca se hace dentro de una petición en el event loop.
+
+- Se regeneran **al arrancar** si faltan o tienen más de 24 h, y **después de cada `daily`** completado. Mientras se regeneran se siguen sirviendo los anteriores.
+- Si un archivo aún no existe (primer arranque), la ruta lo genera bajo demanda en un hilo, sin bloquear el resto de peticiones.
+- Regenerar a mano: `curl -s -X POST -H "Authorization: Bearer $ADMIN_SECRET" http://localhost:8000/api/admin/sitemaps/regenerate`.
+- Comprobar: `GET /api/admin/sitemaps/status` y `ls -la /app/data/sitemaps/`. Desde fuera: `curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -H "Accept-Encoding: gzip" https://www.holaayudas.com/sitemap.xml` → `200` en menos de 1 s.
+- Seguimiento en Google Search Console → Sitemaps (estado "Correcto").
 
 ### Reentrenar FAISS (cada pocos meses)
 
@@ -309,6 +322,10 @@ Si no sabes con qué email está la cuenta: mira el destinatario de los correos 
 | `FAISS index ready: N vectors indexed` | Construcción completa terminada |
 | `Updating FAISS index after … sync` → `Added N new vectors…` / `already up to date` | Actualización incremental tras un sync |
 | `FAISS index saved to …` | Índice guardado en disco |
+| `Generating sitemaps in …` → `Sitemaps generated: N files, M URLs in S s` | Generación de sitemaps (arranque, tras `daily` o manual) |
+| `Sitemaps are up to date — not regenerating` | Arranque con sitemaps de menos de 24 h |
+| `Sitemap … not pregenerated — building on demand` | Se pidió un sitemap que aún no existe en disco (normal solo en el primer arranque) |
+| `Sitemap generation failed` | Falló la generación; se siguen sirviendo los archivos anteriores (email de alerta si SMTP está configurado) |
 | `Failed to update FAISS index` / `FAISS index load failed` / `FAISS rebuild failed` | FAISS no se ha cargado/actualizado → revisar el error (búsqueda solo FTS si no está listo) |
 | `Skipping backfill-embeddings: last backfill-detail failed` | Relanzar `backfill-detail` hasta que termine bien |
 | `Background sync failed` | Excepción en el sync (se envía email si SMTP está configurado) |

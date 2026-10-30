@@ -348,3 +348,104 @@ class TestSeoCompleteness:
                 f"Auxiliary route {route} should not be in the sitemap "
                 f"(it requires query params and shows empty content without them)"
             )
+
+
+# ---------------------------------------------------------------------------
+# Sitemap routes: served from pregenerated files, non-blocking fallback
+# ---------------------------------------------------------------------------
+
+import asyncio
+import gzip as _gzip
+import time
+
+from httpx import ASGITransport, AsyncClient
+
+from backend.main import app
+from backend.routes import seo as seo_routes
+from backend.services import sitemaps as sitemaps_service
+
+
+@pytest.fixture
+def sitemap_dir(tmp_path, monkeypatch):
+    """Point the sitemaps service at an empty temp dir and clear the fallback cache."""
+    path = tmp_path / "sitemaps"
+    path.mkdir()
+    monkeypatch.setattr(sitemaps_service, "SITEMAPS_DIR", str(path))
+    seo_routes._sitemap_cache._store.clear()
+    yield path
+    seo_routes._sitemap_cache._store.clear()
+
+
+@pytest.fixture
+def client():
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+class TestSitemapRoutes:
+    async def test_sitemap_served_from_disk_gzip(self, sitemap_dir, client):
+        xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset>FROM-DISK</urlset>'
+        (sitemap_dir / "sitemap-static.xml.gz").write_bytes(_gzip.compress(xml.encode()))
+
+        response = await client.get("/sitemap-static.xml", headers={"Accept-Encoding": "gzip"})
+
+        assert response.status_code == 200
+        assert response.headers["content-encoding"] == "gzip"
+        assert response.headers["content-type"].startswith("application/xml")
+        assert "max-age=" in response.headers["cache-control"]
+        assert response.text == xml
+
+    async def test_sitemap_served_uncompressed_without_gzip(self, sitemap_dir, client):
+        xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset>FROM-DISK</urlset>'
+        (sitemap_dir / "sitemap.xml.gz").write_bytes(_gzip.compress(xml.encode()))
+
+        response = await client.get("/sitemap.xml", headers={"Accept-Encoding": "identity"})
+
+        assert response.status_code == 200
+        assert "content-encoding" not in response.headers
+        assert response.text == xml
+
+    async def test_sitemap_fallback_when_not_generated(self, sitemap_dir, client):
+        response = await client.get("/sitemap-static.xml")
+
+        assert response.status_code == 200
+        assert response.text == sitemaps_service.build_static_xml()
+
+    async def test_sitemap_invalid_segment_returns_empty_urlset(self, sitemap_dir, client):
+        for path in (
+            "/sitemap-grants-closed-abc.xml",
+            "/sitemap-grants-closed-2023-0.xml",
+            "/sitemap-grants-open-0.xml",
+        ):
+            response = await client.get(path)
+            assert response.status_code == 200
+            assert "<urlset" in response.text
+            assert "<url>" not in response.text
+
+    async def test_sitemap_fallback_does_not_block_event_loop(
+        self, sitemap_dir, client, monkeypatch
+    ):
+        def slow_index(db_path=None):
+            time.sleep(0.6)
+            return '<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex></sitemapindex>'
+
+        monkeypatch.setattr(sitemaps_service, "build_index_xml", slow_index)
+
+        start = time.monotonic()
+
+        async def health_after_delay():
+            # Fire /api/health while the sitemap is being built. Measured from the
+            # common start: if the build blocks the loop, this can't even wake up
+            # from the sleep until the 0.6s build finishes.
+            await asyncio.sleep(0.1)
+            response = await client.get("/api/health")
+            return response, time.monotonic() - start
+
+        sitemap_resp, (health_resp, health_done_at) = await asyncio.gather(
+            client.get("/sitemap.xml"), health_after_delay()
+        )
+
+        assert sitemap_resp.status_code == 200
+        assert health_resp.status_code == 200
+        assert health_done_at < 0.4, (
+            f"/api/health finished at {health_done_at:.2f}s — blocked behind the sitemap build"
+        )
