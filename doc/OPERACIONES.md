@@ -158,6 +158,7 @@ Los sitemaps (`/sitemap.xml` y los que lista) se **pregeneran** en `/app/data/si
 - Regenerar a mano: `curl -s -X POST -H "Authorization: Bearer $ADMIN_SECRET" http://localhost:8000/api/admin/sitemaps/regenerate`.
 - Comprobar: `GET /api/admin/sitemaps/status` y `ls -la /app/data/sitemaps/`. Desde fuera: `curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -H "Accept-Encoding: gzip" https://www.holaayudas.com/sitemap.xml` → `200` en menos de 1 s.
 - Seguimiento en Google Search Console → Sitemaps (estado "Correcto").
+- Las consultas de los sitemaps se resuelven solo con índices (`idx_conv_sitemap_cover`, `idx_conv_sitemap_fin_cover`), contando con que **no hay estadísticas del planificador**. **No ejecutes `ANALYZE` en la BD** sin revisar antes los planes (ver `doc/tasks/sitemap-covering-index.md`).
 
 ### Reentrenar FAISS (cada pocos meses)
 
@@ -324,6 +325,8 @@ Si no sabes con qué email está la cuenta: mira el destinatario de los correos 
 | `FAISS index saved to …` | Índice guardado en disco |
 | `Generating sitemaps in …` → `Sitemaps generated: N files, M URLs in S s` | Generación de sitemaps (arranque, tras `daily` o manual) |
 | `Sitemaps are up to date — not regenerating` | Arranque con sitemaps de menos de 24 h |
+| `Creating index idx_conv_sitemap_… (one-off, may take minutes)` → `Created index … in S s` | Primer arranque tras añadir los índices de sitemaps. **Mientras se crean, las escrituras en la BD esperan** (no lanzar syncs) |
+| `Sitemap index creation failed` | No se pudieron crear los índices; los sitemaps se generan igual, más lento |
 | `Sitemap … not pregenerated — building on demand` | Se pidió un sitemap que aún no existe en disco (normal solo en el primer arranque) |
 | `Sitemap generation failed` | Falló la generación; se siguen sirviendo los archivos anteriores (email de alerta si SMTP está configurado) |
 | `Failed to update FAISS index` / `FAISS index load failed` / `FAISS rebuild failed` | FAISS no se ha cargado/actualizado → revisar el error (búsqueda solo FTS si no está listo) |

@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import sqlite3
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -1698,6 +1699,95 @@ def aggregate_by_year_for_ids(
         conn.close()
 
 
+# Sitemap queries (module-level so tests can EXPLAIN them). All of them are
+# answered from idx_conv_sitemap_cover alone, without reading the wide table.
+SITEMAP_OPEN_COUNT_SQL = """SELECT COUNT(*) FROM convocatorias
+    WHERE detail_fetched = 1
+    AND (fecha_fin_solicitud IS NULL OR fecha_fin_solicitud >= date('now'))"""
+
+SITEMAP_OPEN_MAX_UPDATED_SQL = """SELECT MAX(updated_at) FROM convocatorias
+    WHERE detail_fetched = 1
+    AND (fecha_fin_solicitud IS NULL OR fecha_fin_solicitud >= date('now'))"""
+
+SITEMAP_OPEN_ENTRIES_SQL = """SELECT numero_convocatoria,
+           COALESCE(updated_at, fecha_recepcion) AS lastmod
+    FROM convocatorias
+    WHERE detail_fetched = 1
+    AND (fecha_fin_solicitud IS NULL OR fecha_fin_solicitud >= date('now'))
+    ORDER BY fecha_recepcion DESC
+    LIMIT ? OFFSET ?"""
+
+SITEMAP_CLOSED_BY_YEAR_SQL = """SELECT substr(fecha_recepcion, 1, 4) AS year,
+           COUNT(*) AS count,
+           MAX(updated_at) AS last_modified
+    FROM convocatorias
+    WHERE detail_fetched = 1
+    AND fecha_fin_solicitud IS NOT NULL
+    AND fecha_fin_solicitud < date('now')
+    AND fecha_recepcion IS NOT NULL
+    GROUP BY year
+    ORDER BY year DESC"""
+
+SITEMAP_CLOSED_ENTRIES_SQL = """SELECT numero_convocatoria,
+           COALESCE(updated_at, fecha_recepcion) AS lastmod
+    FROM convocatorias
+    WHERE detail_fetched = 1
+    AND fecha_fin_solicitud IS NOT NULL
+    AND fecha_fin_solicitud < date('now')
+    AND fecha_recepcion >= ? AND fecha_recepcion < ?
+    ORDER BY fecha_recepcion DESC
+    LIMIT ? OFFSET ?"""
+
+# Two covering indexes, because SQLite picks the access path by what each query
+# filters/orders on. Without planner stats (the app never runs ANALYZE) these
+# make all SITEMAP_*_SQL queries index-only:
+# - by fecha_recepcion: open entries (ordered) and closed entries of one year
+# - by fecha_fin_solicitud: closed-by-year aggregation and open max(updated_at)
+SITEMAP_COVER_INDEXES = {
+    "idx_conv_sitemap_cover": (
+        "detail_fetched, fecha_recepcion, fecha_fin_solicitud, numero_convocatoria, updated_at"
+    ),
+    "idx_conv_sitemap_fin_cover": (
+        "detail_fetched, fecha_fin_solicitud, fecha_recepcion, numero_convocatoria, updated_at"
+    ),
+}
+
+
+def ensure_sitemap_index(db_path: str | None = None) -> bool:
+    """Create the covering indexes for sitemap queries if they don't exist.
+
+    Not part of init_convocatorias_db(): on a multi-GB table each one takes
+    minutes and would make the app miss its startup healthcheck. Called in
+    background. Writes are blocked while an index is being created (reads keep
+    working in WAL).
+
+    Args:
+        db_path: Override path (useful for tests).
+
+    Returns:
+        True if any index was created, False if all already existed.
+    """
+    conn = _get_connection(db_path)
+    try:
+        created = False
+        for name, columns in SITEMAP_COVER_INDEXES.items():
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?", (name,)
+            ).fetchone()
+            if exists:
+                continue
+
+            logger.info("Creating index %s (one-off, may take minutes)...", name)
+            start = time.monotonic()
+            conn.execute(f"CREATE INDEX IF NOT EXISTS {name} ON convocatorias({columns})")
+            conn.commit()
+            logger.info("Created index %s in %.1fs", name, time.monotonic() - start)
+            created = True
+        return created
+    finally:
+        conn.close()
+
+
 def get_sitemap_open_count(db_path: str | None = None) -> int:
     """Count open convocatorias for sitemap (not closed).
 
@@ -1706,9 +1796,7 @@ def get_sitemap_open_count(db_path: str | None = None) -> int:
     conn = _get_connection(db_path)
     try:
         row = conn.execute(
-            """SELECT COUNT(*) FROM convocatorias
-               WHERE detail_fetched = 1
-               AND (fecha_fin_solicitud IS NULL OR fecha_fin_solicitud >= date('now'))"""
+            SITEMAP_OPEN_COUNT_SQL
         ).fetchone()
         return row[0]
     finally:
@@ -1720,9 +1808,7 @@ def get_sitemap_open_max_updated(db_path: str | None = None) -> str | None:
     conn = _get_connection(db_path)
     try:
         row = conn.execute(
-            """SELECT MAX(updated_at) FROM convocatorias
-               WHERE detail_fetched = 1
-               AND (fecha_fin_solicitud IS NULL OR fecha_fin_solicitud >= date('now'))"""
+            SITEMAP_OPEN_MAX_UPDATED_SQL
         ).fetchone()
         return row[0]
     finally:
@@ -1742,13 +1828,7 @@ def get_sitemap_open_entries(
     try:
         offset = page * page_size
         rows = conn.execute(
-            """SELECT numero_convocatoria,
-                      COALESCE(updated_at, fecha_recepcion) AS lastmod
-               FROM convocatorias
-               WHERE detail_fetched = 1
-               AND (fecha_fin_solicitud IS NULL OR fecha_fin_solicitud >= date('now'))
-               ORDER BY fecha_recepcion DESC
-               LIMIT ? OFFSET ?""",
+            SITEMAP_OPEN_ENTRIES_SQL,
             (page_size, offset),
         ).fetchall()
         return [
@@ -1768,16 +1848,7 @@ def get_sitemap_closed_by_year(db_path: str | None = None) -> list[dict]:
     conn = _get_connection(db_path)
     try:
         rows = conn.execute(
-            """SELECT substr(fecha_recepcion, 1, 4) AS year,
-                      COUNT(*) AS count,
-                      MAX(updated_at) AS last_modified
-               FROM convocatorias
-               WHERE detail_fetched = 1
-               AND fecha_fin_solicitud IS NOT NULL
-               AND fecha_fin_solicitud < date('now')
-               AND fecha_recepcion IS NOT NULL
-               GROUP BY year
-               ORDER BY year DESC"""
+            SITEMAP_CLOSED_BY_YEAR_SQL
         ).fetchall()
         return [
             {
@@ -1809,15 +1880,7 @@ def get_sitemap_closed_entries(
         year_start = f"{year}-01-01"
         year_end = f"{int(year) + 1}-01-01"
         rows = conn.execute(
-            """SELECT numero_convocatoria,
-                      COALESCE(updated_at, fecha_recepcion) AS lastmod
-               FROM convocatorias
-               WHERE detail_fetched = 1
-               AND fecha_fin_solicitud IS NOT NULL
-               AND fecha_fin_solicitud < date('now')
-               AND fecha_recepcion >= ? AND fecha_recepcion < ?
-               ORDER BY fecha_recepcion DESC
-               LIMIT ? OFFSET ?""",
+            SITEMAP_CLOSED_ENTRIES_SQL,
             (year_start, year_end, page_size, offset),
         ).fetchall()
         return [

@@ -249,3 +249,74 @@ def test_generation_is_reasonably_fast(db_path, out_dir):
     start = time.monotonic()
     sitemaps.generate_all(db_path=db_path, out_dir=out_dir)
     assert time.monotonic() - start < 2
+
+
+class TestCoveringIndex:
+    """idx_conv_sitemap_cover lets every sitemap query skip the (wide) table."""
+
+    INDEXES = {"idx_conv_sitemap_cover", "idx_conv_sitemap_fin_cover"}
+
+    @classmethod
+    def _index_exists(cls, db_path: str) -> bool:
+        """True only if both covering indexes exist."""
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'").fetchall()
+        conn.close()
+        return cls.INDEXES <= {r[0] for r in rows}
+
+    def test_ensure_sitemap_index_creates_index(self, db_path):
+        from backend.services.convocatorias_db import ensure_sitemap_index
+
+        assert self._index_exists(db_path) is False
+        assert ensure_sitemap_index(db_path=db_path) is True
+        assert self._index_exists(db_path) is True
+
+    def test_ensure_sitemap_index_idempotent(self, db_path):
+        from backend.services.convocatorias_db import ensure_sitemap_index
+
+        ensure_sitemap_index(db_path=db_path)
+        assert ensure_sitemap_index(db_path=db_path) is False
+        assert self._index_exists(db_path) is True
+
+    def test_sitemap_queries_use_covering_index(self, db_path):
+        from backend.services import convocatorias_db as cdb
+
+        cdb.ensure_sitemap_index(db_path=db_path)
+        conn = sqlite3.connect(db_path)
+        # No ANALYZE: the app never runs it, so production has no planner stats
+        assert conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name = 'sqlite_stat1'"
+        ).fetchone() is None
+        queries = {
+            "open_count": (cdb.SITEMAP_OPEN_COUNT_SQL, ()),
+            "open_max_updated": (cdb.SITEMAP_OPEN_MAX_UPDATED_SQL, ()),
+            "open_entries": (cdb.SITEMAP_OPEN_ENTRIES_SQL, (50000, 0)),
+            "closed_by_year": (cdb.SITEMAP_CLOSED_BY_YEAR_SQL, ()),
+            "closed_entries": (
+                cdb.SITEMAP_CLOSED_ENTRIES_SQL, ("2023-01-01", "2024-01-01", 50000, 0)
+            ),
+        }
+        for name, (sql, params) in queries.items():
+            plan = [row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + sql, params)]
+            table_access = [d for d in plan if "convocatorias" in d]
+            assert table_access, f"{name}: no access to convocatorias in plan {plan}"
+            # Index-only: every access must be through a covering index
+            # (one of the two new ones; COUNT can also use an existing one)
+            for detail in table_access:
+                assert "USING COVERING INDEX" in detail, (
+                    f"{name} reads the table instead of a covering index: {plan}"
+                )
+        conn.close()
+
+    def test_generation_unchanged_with_index(self, db_path, tmp_path):
+        from backend.services.convocatorias_db import ensure_sitemap_index
+
+        before = str(tmp_path / "before")
+        after = str(tmp_path / "after")
+        sitemaps.generate_all(db_path=db_path, out_dir=before)
+        ensure_sitemap_index(db_path=db_path)
+        sitemaps.generate_all(db_path=db_path, out_dir=after)
+
+        assert _gz_files(before) == _gz_files(after)
+        for name in _gz_files(before):
+            assert _read(before, name) == _read(after, name), name

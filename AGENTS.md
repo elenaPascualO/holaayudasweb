@@ -95,7 +95,9 @@ docker build -t holaayudas . && docker run -p 8000:8000 holaayudas
 
 - Python: type hints, docstrings estilo Google (`Args:` / `Returns:`), `logging` por módulo (`logger = logging.getLogger(__name__)`), imports perezosos para dependencias pesadas (`openai`, `faiss`) dentro de funciones cuando ya se hace así.
 - La configuración nueva va en `backend/config.py` leyendo de `os.getenv`, y se documenta en `doc/OPERACIONES.md`.
-- SQLite: abrir con `_get_connection()` y cerrar en `finally`. El trabajo pesado y bloqueante, con `asyncio.to_thread`.
+- SQLite: abrir con `_get_connection()` y cerrar en `finally`.
+- **Nunca llamar a SQLite, FAISS ni nada lento de forma síncrona dentro de una ruta `async def`**: bloquea el event loop y para **todo** el servidor. Usar `await asyncio.to_thread(func, ...)` o un wrapper `*_async`. Cada ruta nueva con trabajo síncrono necesita su test en `backend/tests/test_non_blocking.py`. Ver `doc/tasks/non-blocking-routes.md`.
+- **No ejecutar `ANALYZE` en la BD.** Los índices de los sitemaps (`idx_conv_sitemap_cover`, `idx_conv_sitemap_fin_cover`) están ajustados para el planificador sin estadísticas; con ellas cambia los planes. Ver `doc/tasks/sitemap-covering-index.md`.
 - Frontend: vanilla JS sin framework, componentes como funciones que devuelven HTML/DOM, y llamadas al backend solo a través de `utils/api.js`.
 - Commits: Conventional Commits en inglés (`feat:`, `fix:`, `test:`…).
 - No commitear `.env` ni `data/*.db`.
