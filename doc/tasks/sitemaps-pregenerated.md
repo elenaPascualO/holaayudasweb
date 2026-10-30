@@ -1,6 +1,6 @@
 # Sitemaps pregenerados en disco y sin bloquear el servidor
 
-**Estado:** implementada (30-oct-2026), pendiente de desplegar y verificar en producción.
+**Estado:** implementada y **verificada en producción** (30-oct-2026, deploy `43a151f`). Queda el seguimiento de 2–3 días (analytics y Search Console).
 
 ## Contexto
 
@@ -158,3 +158,10 @@ Las rutas actuales (`/sitemap.xml`, `/sitemap-static.xml`, `/sitemap-grants-open
 5. **En 2–3 días:**
    - Analytics de Coolify: P95 de `/sitemap*.xml` en milisegundos, error ~0 % y los 499 prácticamente desaparecidos. El P95 de `/robots.txt` también debería bajar.
    - Google Search Console → Sitemaps: estado **"Correcto"** y número de URLs descubiertas al alza.
+
+## Resultado de la verificación (30-oct-2026)
+
+- Log del arranque: `Sitemaps generated: 21 files, 658932 URLs in 7.2s` (tras crear los índices de `sitemap-covering-index.md`).
+- Desde fuera, con `Accept-Encoding: gzip` (incluye latencia de red): `/sitemap.xml` **0,28 s** (antes P95 49,7 s y 71 % de errores), `/sitemap-grants-open-1.xml` 0,35 s (antes 8,4 s), `/sitemap-grants-closed-2025.xml` 0,36 s. Todas 200 con `Content-Encoding: gzip` y los `Cache-Control` esperados.
+- El índice lista 20 sitemaps: estático, `open-1`…`open-6` y cerrados de 2014 a 2026.
+- Observación: 6 páginas de abiertas implican ~250–300K ayudas "abiertas" (sin `fecha_fin_solicitud` o con fecha futura). El criterio es el mismo de antes; revisar si muchas sin fecha de fin están realmente cerradas (candidata a spec).

@@ -1,6 +1,6 @@
 # Índice que cubre las consultas de los sitemaps
 
-**Estado:** implementada (30-oct-2026), pendiente de desplegar y verificar. Aprobada **sin esperar a la medición** (decisión de la usuaria). **El diseño cambió durante la implementación: son dos índices, no uno** (ver "Cambios respecto a la propuesta").
+**Estado:** implementada y **verificada en producción** (30-oct-2026, deploy `43a151f`). Aprobada **sin esperar a la medición** (decisión de la usuaria). **El diseño cambió durante la implementación: son dos índices, no uno** (ver "Cambios respecto a la propuesta").
 
 ## Contexto
 
@@ -106,3 +106,9 @@ El test **no** ejecuta `ANALYZE` (la primera versión sí lo hacía y no refleja
    ```sh
    python3 -c "import sqlite3; c=sqlite3.connect('/app/data/convocatorias.db'); print(c.execute(\"SELECT name FROM sqlite_master WHERE name LIKE 'idx_conv_sitemap%'\").fetchall())"
    ```
+
+## Resultado de la verificación (30-oct-2026)
+
+- `Created index idx_conv_sitemap_cover in 87.9s` y `Created index idx_conv_sitemap_fin_cover in 11.6s`. Healthchecks en 200 durante toda la creación, y una visita a `/ayuda/938067` respondió 200 mientras se creaba (las lecturas no se bloquean).
+- Generación completa posterior: **7,2 s** para 658.932 URLs.
+- No hay medición de la generación **sin** índices (se crearon antes de la primera generación), así que no se puede cuantificar la mejora atribuible a ellos.
