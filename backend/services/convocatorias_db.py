@@ -588,6 +588,61 @@ def iter_all_embeddings(
         conn.close()
 
 
+def get_embedding_ids(db_path: str | None = None) -> list[int]:
+    """Return the IDs of all convocatorias that have an embedding.
+
+    Only reads the ID column (no BLOBs), so it is cheap even for 600K+ rows.
+
+    Args:
+        db_path: Override path (useful for tests).
+
+    Returns:
+        List of convocatoria IDs.
+    """
+    conn = _get_connection(db_path)
+    try:
+        rows = conn.execute("SELECT convocatoria_id FROM conv_embeddings").fetchall()
+        return [row[0] for row in rows]
+    finally:
+        conn.close()
+
+
+def get_embeddings_by_ids(
+    ids: list[int], db_path: str | None = None
+) -> list[tuple[int, bytes]]:
+    """Return (id, embedding_blob) for the given convocatoria IDs.
+
+    Queries in chunks to stay under SQLite's bound-parameter limit.
+
+    Args:
+        ids: Convocatoria IDs to fetch.
+        db_path: Override path (useful for tests).
+
+    Returns:
+        List of (convocatoria_id, embedding_blob) tuples. IDs without an
+        embedding are omitted.
+    """
+    if not ids:
+        return []
+
+    chunk_size = 900
+    conn = _get_connection(db_path)
+    try:
+        result: list[tuple[int, bytes]] = []
+        for start in range(0, len(ids), chunk_size):
+            chunk = ids[start:start + chunk_size]
+            placeholders = ",".join("?" for _ in chunk)
+            rows = conn.execute(
+                f"SELECT convocatoria_id, embedding FROM conv_embeddings "
+                f"WHERE convocatoria_id IN ({placeholders})",
+                chunk,
+            ).fetchall()
+            result.extend((row["convocatoria_id"], row["embedding"]) for row in rows)
+        return result
+    finally:
+        conn.close()
+
+
 def sample_embeddings(
     n: int, db_path: str | None = None
 ) -> list[tuple[int, bytes]]:

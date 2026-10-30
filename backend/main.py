@@ -53,18 +53,19 @@ async def lifespan(app: FastAPI):
     init_posts_db()
     load_index_template(frontend_dist)
 
-    # Load FAISS index in background (search works FTS-only until ready)
+    # Load FAISS index in background (search works FTS-only until ready).
+    # Reads the saved index from disk; only builds from SQLite if there is none.
     # Skip in test environments to avoid loading 6GB+ of embeddings
     faiss_load_task = None
     if not os.environ.get("TESTING"):
         try:
-            from backend.services.faiss_index import load_index_from_db
+            from backend.services.faiss_index import load_or_build
         except ImportError:
-            from services.faiss_index import load_index_from_db
+            from services.faiss_index import load_or_build
 
         async def _load_faiss():
             try:
-                await asyncio.to_thread(load_index_from_db)
+                await asyncio.to_thread(load_or_build)
             except Exception as e:
                 logging.getLogger(__name__).error("FAISS index load failed: %s", e)
 

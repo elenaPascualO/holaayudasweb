@@ -20,6 +20,7 @@ def client():
 @pytest.fixture(autouse=True)
 def reset_sync_state():
     """Reset admin sync state before each test."""
+    admin_module.admin_limiter._hits.clear()
     admin_module._sync_state = {"status": "idle"}
     admin_module._sync_task = None
     admin_module._last_result_by_mode.clear()
@@ -293,3 +294,34 @@ async def test_failed_detail_tracked_in_history(client):
 
     assert admin_module._last_result_by_mode["backfill-detail"]["status"] == "failed"
     assert "Connection reset" in admin_module._last_result_by_mode["backfill-detail"]["error"]
+
+
+async def test_faiss_rebuild_requires_token(client):
+    """POST /faiss/rebuild rejects requests without a valid token."""
+    response = await client.post(
+        "/api/admin/faiss/rebuild", headers={"Authorization": "Bearer wrong"}
+    )
+    assert response.status_code == 401
+
+
+async def test_faiss_rebuild_starts_in_background(client):
+    """POST /faiss/rebuild launches the rebuild and returns immediately."""
+    with patch("backend.services.faiss_index.load_index_from_db") as mock_rebuild:
+        response = await client.post("/api/admin/faiss/rebuild", headers=AUTH_HEADER)
+        await asyncio.sleep(0.1)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "started"
+    mock_rebuild.assert_called_once()
+
+
+async def test_faiss_rebuild_skipped_while_building(client):
+    """A rebuild is refused while another build/update holds the write lock."""
+    from backend.services import faiss_index
+
+    with patch("backend.services.faiss_index.load_index_from_db") as mock_rebuild:
+        with faiss_index._write_lock:
+            response = await client.post("/api/admin/faiss/rebuild", headers=AUTH_HEADER)
+
+    assert response.json()["status"] == "skipped"
+    mock_rebuild.assert_not_called()

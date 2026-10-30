@@ -65,6 +65,12 @@ CONVOCATORIAS_DB_PATH: str = os.getenv(
     str(Path(__file__).parent.parent / "data" / "convocatorias.db"),
 )
 
+# FAISS index persisted on disk (next to the convocatorias DB by default)
+FAISS_INDEX_PATH: str = os.getenv(
+    "FAISS_INDEX_PATH",
+    str(Path(CONVOCATORIAS_DB_PATH).parent / "faiss.index"),
+)
+
 # OpenAI API key for embeddings and post generation
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 

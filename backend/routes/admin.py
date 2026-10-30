@@ -25,6 +25,9 @@ _sync_task: asyncio.Task | None = None
 # Last completed/failed result per mode (in-memory, resets on restart)
 _last_result_by_mode: dict[str, dict] = {}
 
+# FAISS rebuild task (kept referenced so it isn't garbage-collected)
+_faiss_rebuild_task: asyncio.Task | None = None
+
 
 def _validate_token(authorization: str) -> None:
     """Validate admin bearer token."""
@@ -67,15 +70,15 @@ async def _run_sync_background(mode: str) -> None:
         invalidate_sitemap_cache()
         invalidate_has_data_cache()
 
-        # Refresh FAISS index with newly embedded vectors
+        # Add newly embedded vectors to FAISS (incremental, no rebuild)
         if mode in ("daily", "backfill-embeddings") and not os.environ.get("TESTING"):
             try:
                 import backend.services.faiss_index as faiss_index
 
-                logger.info("Refreshing FAISS index after %s sync", mode)
-                await asyncio.to_thread(faiss_index.load_index_from_db)
+                logger.info("Updating FAISS index after %s sync", mode)
+                await asyncio.to_thread(faiss_index.sync_from_db)
             except Exception as e:
-                logger.error("Failed to refresh FAISS index: %s", e)
+                logger.error("Failed to update FAISS index: %s", e)
     except asyncio.CancelledError:
         finished = {
             "status": "cancelled",
@@ -284,9 +287,52 @@ async def get_convocatorias_backfill_stats(
 async def get_faiss_status(
     authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
 ) -> dict:
-    """Return FAISS vector index status (ready, total vectors, index type)."""
+    """Return FAISS vector index status (ready, total vectors, index type, building, on disk)."""
     _validate_token(authorization)
 
     import backend.services.faiss_index as faiss_index
 
     return faiss_index.get_stats()
+
+
+async def _run_faiss_rebuild_background() -> None:
+    """Retrain the FAISS index from SQLite in a worker thread."""
+    import backend.services.faiss_index as faiss_index
+
+    logger.info("FAISS rebuild starting")
+    try:
+        await asyncio.to_thread(faiss_index.load_index_from_db)
+        logger.info("FAISS rebuild completed")
+    except Exception as e:
+        logger.exception("FAISS rebuild failed")
+
+        from backend.services.email_notify import send_sync_failure_email
+
+        await send_sync_failure_email("faiss-rebuild", str(e))
+
+
+@router.post("/faiss/rebuild")
+async def trigger_faiss_rebuild(
+    request: Request,
+    authorization: str = Header(..., description="Bearer token matching ADMIN_SECRET"),
+) -> dict:
+    """Retrain the FAISS index from scratch in background and save it to disk.
+
+    Only needed occasionally (e.g. every few months) to refresh the trained
+    centroids; daily syncs add vectors incrementally. Takes several minutes and
+    several GB of RAM. The current index keeps serving searches meanwhile.
+
+    Use GET /api/admin/faiss/status to check progress (building / built_at).
+    """
+    global _faiss_rebuild_task
+
+    admin_limiter.check(get_client_ip(request))
+    _validate_token(authorization)
+
+    import backend.services.faiss_index as faiss_index
+
+    if faiss_index.is_building():
+        return {"status": "skipped", "reason": "FAISS index build or update already in progress"}
+
+    _faiss_rebuild_task = asyncio.create_task(_run_faiss_rebuild_background())
+    return {"status": "started"}
