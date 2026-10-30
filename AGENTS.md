@@ -8,6 +8,22 @@ Web gratuita para buscar ayudas y subvenciones públicas españolas (www.holaayu
 
 Idioma: la UI, los textos y la documentación (`doc/`) están en **español**. El código, los identificadores y los mensajes de commit, en inglés.
 
+## Flujo de trabajo obligatorio: spec → tests → código
+
+**No se toca código de producción sin una spec aprobada.** Para cualquier funcionalidad nueva o cambio de comportamiento:
+
+1. **Spec primero.** Crear `doc/tasks/<nombre-en-kebab-case>.md` con: contexto/problema, objetivo, diseño (flujos, archivos afectados, cambios de API/configuración), qué queda fuera de alcance, **la lista de tests** (nombre y qué comprueba cada uno) y cómo verificarlo en producción. Formato de referencia: `doc/tasks/faiss-persistence.md`. Presentar la spec al usuario antes de continuar.
+2. **Tests de la spec.** Escribir los tests listados en la spec antes de la implementación. Deben fallar por la razón esperada (la funcionalidad aún no existe).
+3. **Implementación.** Escribir el código hasta que pasen los tests de la spec. Si durante la implementación cambia el diseño, actualizar la spec (y sus tests) en vez de dejarla desfasada.
+4. **Validación.** Una spec solo se da por válida cuando **toda la suite está en verde**, no solo los tests nuevos:
+   ```bash
+   uv run pytest                     # backend: todos
+   cd frontend && bun run test:run   # frontend: todos
+   ```
+   Si algún test falla, aunque parezca no relacionado, se investiga y se arregla antes de dar la spec por terminada. Nunca se desactivan ni se debilitan tests para que pasen. Anotar en la spec el estado y el resultado de la suite.
+
+Excepciones (no requieren spec): erratas, cambios solo de documentación y arreglos triviales de una línea sin cambio de comportamiento. Aun así, la suite completa debe pasar.
+
 ## Stack
 
 | Capa | Tecnología |
@@ -59,8 +75,6 @@ uv run ruff check backend                             # lint
 
 docker build -t holaayudas . && docker run -p 8000:8000 holaayudas
 ```
-
-Ejecuta los tests relevantes antes de dar algo por terminado.
 
 ## Conceptos clave
 
