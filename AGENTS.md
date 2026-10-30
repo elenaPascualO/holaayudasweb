@@ -105,3 +105,7 @@ docker build -t holaayudas . && docker run -p 8000:8000 holaayudas
 ## Operación
 
 Despliegue, variables de entorno, syncs, backfills, OpenAI (keys, billing) y resolución de problemas: **`doc/OPERACIONES.md`**. Mantenlo actualizado cuando cambie algo operativo (nuevas variables, endpoints de admin, modos de sync).
+
+## Backlog
+
+Problemas e ideas detectados que aún no tienen spec: **`doc/BACKLOG.md`**. Si durante un trabajo encuentras algo fuera de alcance, apúntalo ahí. Cuando escribas la spec de un elemento, quítalo del backlog.
